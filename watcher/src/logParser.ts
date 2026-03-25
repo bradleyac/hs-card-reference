@@ -71,7 +71,7 @@ const BACON_SUBSET_TO_RACE: Record<string, string> = {
   MURLOC:     'MURLOC',
   NAGA:       'NAGA',
   PIRATE:     'PIRATE',
-  QUILBOAR:   'QUILBOAR',
+  QUILLBOAR:  'QUILBOAR',
   UNDEAD:     'UNDEAD',
 };
 
