@@ -44,7 +44,7 @@ export interface BgCard {
   /**
    * Searchable keywords extracted from mechanics[] and synthetic additions.
    * Examples: "divine_shield", "windfury", "taunt", "buddy", "anomaly",
-   * "timewarped", "tier1" … "tier6"
+   * "timewarped", "tier1" … "tier7"
    */
   keywords: string[];
 }

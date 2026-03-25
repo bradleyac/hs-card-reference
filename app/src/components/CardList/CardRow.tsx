@@ -6,7 +6,7 @@ interface CardRowProps {
   style?: React.CSSProperties;
 }
 
-const TIER_COLORS = ['', '#888', '#1ea', '#48f', '#b5f', '#f80', '#fc0'];
+const TIER_COLORS = ['', '#888', '#1ea', '#48f', '#b5f', '#f80', '#fc0', '#f44'];
 
 export function CardRow({ card, onClick, style }: CardRowProps) {
   return (

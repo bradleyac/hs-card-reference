@@ -7,7 +7,7 @@ interface CardDetailProps {
   onClose: () => void;
 }
 
-const TIER_COLORS = ['', '#888', '#1ea', '#48f', '#b5f', '#f80', '#fc0'];
+const TIER_COLORS = ['', '#888', '#1ea', '#48f', '#b5f', '#f80', '#fc0', '#f44'];
 
 export function CardDetail({ card, onClose }: CardDetailProps) {
   // Close on Escape key
