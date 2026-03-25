@@ -83,6 +83,9 @@ function stripHtml(text: string): string {
  * Returns null if the card is not relevant to Battlegrounds.
  */
 function classifyCategory(raw: RawCard): BgCardCategory | null {
+  // Duos-exclusive cards (BGDUO prefix) are not part of the Solo pool
+  if (raw.id.startsWith('BGDUO')) return null;
+
   if (raw.isBattlegroundsPoolMinion) return 'TAVERN_MINION';
   if (raw.battlegroundsHero) return 'HERO';
   // Skin variants: type=HERO + battlegroundsSkinParentId set (battlegroundsHero is null)
