@@ -1,0 +1,10 @@
+{
+  "name": "hs-card-reference",
+  "private": true,
+  "workspaces": ["app", "watcher"],
+  "scripts": {
+    "dev": "npm run dev --workspace=app",
+    "watch": "npm run dev --workspace=watcher",
+    "build": "npm run build --workspace=app"
+  }
+}
