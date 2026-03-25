@@ -1,5 +1,17 @@
 import { filterAndProjectCards, type RawCard } from './cardFilter';
-import { getAllCards, getStoredBuildNumber, storeBuildNumber, storeCards } from './cardDb';
+import {
+  getAllCards,
+  getStoredBuildNumber,
+  storeBuildNumber,
+  storeCards,
+  getStoredFilterVersion,
+  storeFilterVersion,
+} from './cardDb';
+
+// Bump this string whenever cardFilter.ts changes in a way that alters which
+// cards are included — forces a re-index even if the HearthstoneJSON build
+// number hasn't changed.
+const FILTER_VERSION = '2';
 import type { BgCard } from './types';
 
 const INDEX_URL = 'https://api.hearthstonejson.com/v1/latest/';
@@ -46,12 +58,15 @@ export async function syncCards(
 ): Promise<Map<string, BgCard>> {
   onStatus({ type: 'loading', message: 'Checking card data version…' });
 
-  const [storedBuild, latestBuild] = await Promise.all([
+  const [storedBuild, latestBuild, storedFilterVersion] = await Promise.all([
     getStoredBuildNumber(),
     fetchLatestBuildNumber(),
+    getStoredFilterVersion(),
   ]);
 
-  const needsUpdate = latestBuild && latestBuild !== storedBuild;
+  const needsUpdate =
+    (latestBuild && latestBuild !== storedBuild) ||
+    storedFilterVersion !== FILTER_VERSION;
 
   if (needsUpdate) {
     onStatus({ type: 'loading', message: `Downloading card data (build ${latestBuild})…` });
@@ -79,6 +94,7 @@ export async function syncCards(
     onStatus({ type: 'loading', message: 'Storing cards…' });
     await storeCards(bgCards);
     if (latestBuild) await storeBuildNumber(latestBuild);
+    await storeFilterVersion(FILTER_VERSION);
 
     cardCache = new Map(bgCards.map(c => [c.id, c]));
     onStatus({ type: 'ready', cardCount: bgCards.length, fromCache: false });

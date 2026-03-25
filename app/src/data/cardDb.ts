@@ -51,6 +51,17 @@ export async function storeBuildNumber(build: string): Promise<void> {
   await db.put('meta', Date.now(), 'lastSynced');
 }
 
+export async function getStoredFilterVersion(): Promise<string | null> {
+  const db = await getDb();
+  const val = await db.get('meta', 'filterVersion');
+  return typeof val === 'string' ? val : null;
+}
+
+export async function storeFilterVersion(version: string): Promise<void> {
+  const db = await getDb();
+  await db.put('meta', version, 'filterVersion');
+}
+
 export async function storeCards(cards: BgCard[]): Promise<void> {
   const db = await getDb();
   const tx = db.transaction('cards', 'readwrite');
