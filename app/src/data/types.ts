@@ -40,6 +40,8 @@ export interface BgCard {
   heroPowerDbfId: number | null;
   /** dbfId of this hero's buddy (set on HERO cards) */
   buddyDbfId: number | null;
+  /** Race strings associated with this hero (set on HERO cards, empty otherwise) */
+  associatedRaces: string[];
 
   /**
    * Searchable keywords extracted from mechanics[] and synthetic additions.
@@ -58,6 +60,8 @@ export interface GameState {
   heroCardIds: string[];
   /** Race strings for tribes in the pool, e.g. ["BEAST","DRAGON"]. Empty = all tribes. */
   availableRaces: string[];
+  /** Raw "at least one of" constraints from dual-tribe pool minions. Propagation runs app-side. */
+  pendingConstraints: string[][];
   /** Card ID of the active anomaly, or null */
   anomalyCardId: string | null;
   /** Card IDs of timewarped cards active this game */
@@ -69,6 +73,7 @@ export const EMPTY_GAME_STATE: GameState = {
   phase: 'LOBBY',
   heroCardIds: [],
   availableRaces: [],
+  pendingConstraints: [],
   anomalyCardId: null,
   timewarpedCardIds: [],
 };

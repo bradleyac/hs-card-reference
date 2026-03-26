@@ -25,6 +25,7 @@ export interface RawCard {
   battlegroundsSkinParentId?: number;
   // Used to resolve hero powers → parent hero
   heroId?: string;
+  battlegroundsAssociatedRaces?: string[];
 }
 
 // Mechanics that map to synthetic keyword strings
@@ -162,6 +163,7 @@ export function filterAndProjectCards(rawCards: RawCard[]): BgCard[] {
       races: getRaces(raw),
       heroPowerDbfId: raw.heroPowerDbfId ?? null,
       buddyDbfId: raw.battlegroundsBuddyDbfId ?? null,
+      associatedRaces: raw.battlegroundsAssociatedRaces ?? [],
       keywords: extractKeywords(raw, category),
     };
 

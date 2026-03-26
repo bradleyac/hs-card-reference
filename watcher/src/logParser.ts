@@ -16,6 +16,7 @@ export type LogEvent =
   | { type: 'ANOMALY_DBID'; dbfId: number }
   | { type: 'TIMEWARPED_ENTITY'; cardId: string }
   | { type: 'AVAILABLE_RACES'; races: string[] }
+  | { type: 'RACE_CONSTRAINT'; races: string[] }
   | { type: 'GAME_PHASE'; phase: 'IN_GAME' | 'ENDED' };
 
 // ── Regex patterns ────────────────────────────────────────────────────────────
@@ -85,14 +86,31 @@ function isBgHeroCardId(cardId: string): boolean {
   );
 }
 
-// Called at each entity boundary. If the previous entity was a pure single-tribe
-// pool minion, add that tribe to the available set.
-function flushEntitySubsets(): string | null {
-  if (currentEntityIsPoolMinion && currentEntitySubsets.length === 1) {
-    const race = BACON_SUBSET_TO_RACE[currentEntitySubsets[0]];
-    if (race && !availableRaceSet.has(race)) {
-      availableRaceSet.add(race);
-      return race;
+type FlushResult =
+  | { kind: 'confirmed'; race: string }
+  | { kind: 'constraint'; races: string[] }
+  | null;
+
+// Called at each entity boundary. Emits a confirmed race (1 subset) or a
+// constraint (2 subsets = "at least one of these is active"). >2 subsets ignored.
+function flushEntitySubsets(): FlushResult {
+  if (currentEntityIsPoolMinion) {
+    if (currentEntitySubsets.length === 1) {
+      const race = BACON_SUBSET_TO_RACE[currentEntitySubsets[0]];
+      if (race && !availableRaceSet.has(race)) {
+        availableRaceSet.add(race);
+        currentEntityIsPoolMinion = false;
+        currentEntitySubsets = [];
+        return { kind: 'confirmed', race };
+      }
+    } else if (currentEntitySubsets.length === 2) {
+      const a = BACON_SUBSET_TO_RACE[currentEntitySubsets[0]];
+      const b = BACON_SUBSET_TO_RACE[currentEntitySubsets[1]];
+      if (a && b) {
+        currentEntityIsPoolMinion = false;
+        currentEntitySubsets = [];
+        return { kind: 'constraint', races: [a, b] };
+      }
     }
   }
   currentEntityIsPoolMinion = false;
@@ -134,22 +152,20 @@ export function parseLine(line: string): LogEvent | null {
     // ── FULL_ENTITY - Creating ────────────────────────────────────────────────
     const fullEntityMatch = FULL_ENTITY_RE.exec(content);
     if (fullEntityMatch) {
-      const newRace = flushEntitySubsets();
+      const flush = flushEntitySubsets();
       currentCardId = fullEntityMatch[2];
-      currentEntityIsPoolMinion = false;
-      currentEntitySubsets = [];
-      if (newRace) return { type: 'AVAILABLE_RACES', races: Array.from(availableRaceSet) };
+      if (flush?.kind === 'confirmed') return { type: 'AVAILABLE_RACES', races: Array.from(availableRaceSet) };
+      if (flush?.kind === 'constraint') return { type: 'RACE_CONSTRAINT', races: flush.races };
       return null;
     }
 
     // ── SHOW_ENTITY ───────────────────────────────────────────────────────────
     const showEntityMatch = SHOW_ENTITY_CARDID_RE.exec(content);
     if (showEntityMatch) {
-      const newRace = flushEntitySubsets();
+      const flush = flushEntitySubsets();
       currentCardId = showEntityMatch[1];
-      currentEntityIsPoolMinion = false;
-      currentEntitySubsets = [];
-      if (newRace) return { type: 'AVAILABLE_RACES', races: Array.from(availableRaceSet) };
+      if (flush?.kind === 'confirmed') return { type: 'AVAILABLE_RACES', races: Array.from(availableRaceSet) };
+      if (flush?.kind === 'constraint') return { type: 'RACE_CONSTRAINT', races: flush.races };
       return null;
     }
 

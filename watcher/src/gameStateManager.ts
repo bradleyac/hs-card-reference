@@ -29,7 +29,6 @@ export class GameStateManager {
         break;
 
       case 'ANOMALY_DBID':
-        // dbfId → card lookup happens in the PWA; watcher passes the dbfId as a string key
         this.state.anomalyCardId = String(event.dbfId);
         this.emit();
         break;
@@ -42,7 +41,14 @@ export class GameStateManager {
         break;
 
       case 'AVAILABLE_RACES':
+        // Direct observations from single-tribe pool minions; propagation runs app-side.
         this.state.availableRaces = event.races;
+        this.emit();
+        break;
+
+      case 'RACE_CONSTRAINT':
+        // "At least one of" signal from a dual-tribe pool minion; propagation runs app-side.
+        this.state.pendingConstraints = [...this.state.pendingConstraints, event.races];
         this.emit();
         break;
 
@@ -50,7 +56,6 @@ export class GameStateManager {
         this.state.phase = event.phase;
         this.emit();
         break;
-
     }
   }
 

@@ -1,6 +1,8 @@
 /**
  * Smoke test using patterns from the real Power.log.
  * Run with: npx tsx src/test-parser.ts
+ *
+ * Propagation algorithm tests live in app/src/test-propagation.ts
  */
 
 import { parseLine } from './logParser';
@@ -14,13 +16,13 @@ const SAMPLE_LINES = [
   'D 16:12:15.9 GameState.DebugPrintPower() -     GameEntity EntityID=4',
   // BG mode detection via COIN_MANA_GEM in GameEntity block
   'D 16:12:15.9 GameState.DebugPrintPower() -         tag=COIN_MANA_GEM value=1',
-  // Anomaly in GameEntity block (BACON_GLOBAL_ANOMALY_DBID, not BACON_ANOMALY_DBID)
+  // Anomaly in GameEntity block
   'D 16:12:15.9 GameState.DebugPrintPower() -         tag=BACON_GLOBAL_ANOMALY_DBID value=102459',
-  // Playing hero FULL_ENTITY block — has PLAYER_LEADERBOARD_PLACE (universal playing-hero signal)
+  // Playing hero FULL_ENTITY block
   'D 16:12:16.3 GameState.DebugPrintPower() -     FULL_ENTITY - Creating ID=77 CardID=BG25_HERO_100',
   'D 16:12:16.3 GameState.DebugPrintPower() -         tag=PLAYER_LEADERBOARD_PLACE value=1',
   'D 16:12:16.3 GameState.DebugPrintPower() -         tag=BACON_HERO_CAN_BE_DRAFTED value=1',
-  // Another playing hero (e.g. Patchwerk — no tribe bonus so no tag=3026)
+  // Another playing hero
   'D 16:12:16.3 GameState.DebugPrintPower() -     FULL_ENTITY - Creating ID=78 CardID=TB_BaconShop_HERO_93',
   'D 16:12:16.3 GameState.DebugPrintPower() -         tag=PLAYER_LEADERBOARD_PLACE value=1',
   'D 16:12:16.3 GameState.DebugPrintPower() -         tag=BACON_HERO_CAN_BE_DRAFTED value=1',
@@ -56,7 +58,7 @@ function expect(label: string, actual: unknown, expected: unknown) {
 
 console.log('\n── Line Parser ─────────────────────────────────────────────────────');
 expect('CREATE_GAME', parseLine(SAMPLE_LINES[0])?.type, 'GAME_START');
-expect('non-power line returns null', parseLine(SAMPLE_LINES[13]), null);
+expect('non-power line returns null', parseLine(SAMPLE_LINES[15]), null);
 
 console.log('\n── Game State Manager ──────────────────────────────────────────────');
 
@@ -77,6 +79,68 @@ expect('hero 1', final.heroCardIds[0], 'BG25_HERO_100');
 expect('hero 2', final.heroCardIds[1], 'TB_BaconShop_HERO_93');
 expect('anomaly dbfId', final.anomalyCardId, '102459');
 expect('timewarped card', final.timewarpedCardIds[0], 'TB_BaconShop_TimeWarp_01');
+
+// ── Raw event emission (parser only, no propagation) ─────────────────────────
+
+console.log('\n── Single-tribe pool minion → AVAILABLE_RACES ──────────────────────');
+{
+  const lines = [
+    'D 00:00:00.0 GameState.DebugPrintPower() - CREATE_GAME',
+    'D 00:00:00.0 GameState.DebugPrintPower() -     GameEntity EntityID=1',
+    'D 00:00:01.0 GameState.DebugPrintPower() -     FULL_ENTITY - Creating ID=10 CardID=BGS_004',
+    'D 00:00:01.0 GameState.DebugPrintPower() -         tag=IS_BACON_POOL_MINION value=1',
+    'D 00:00:01.0 GameState.DebugPrintPower() -         tag=BACON_SUBSET_BEAST value=1',
+    // Entity boundary flushes the previous entity
+    'D 00:00:02.0 GameState.DebugPrintPower() -     FULL_ENTITY - Creating ID=11 CardID=BGS_999',
+  ];
+
+  const events: import('./logParser').LogEvent[] = [];
+  for (const line of lines) {
+    const e = parseLine(line);
+    if (e) events.push(e);
+  }
+
+  const raceEvent = events.find(e => e.type === 'AVAILABLE_RACES');
+  expect('AVAILABLE_RACES emitted', raceEvent?.type, 'AVAILABLE_RACES');
+  expect('BEAST in races', (raceEvent as { type: 'AVAILABLE_RACES'; races: string[] } | undefined)?.races.includes('BEAST'), true);
+}
+
+console.log('\n── Dual-tribe pool minion → RACE_CONSTRAINT ────────────────────────');
+{
+  const lines = [
+    'D 00:00:00.0 GameState.DebugPrintPower() - CREATE_GAME',
+    'D 00:00:00.0 GameState.DebugPrintPower() -     GameEntity EntityID=1',
+    'D 00:00:01.0 GameState.DebugPrintPower() -     FULL_ENTITY - Creating ID=10 CardID=BG_DUAL',
+    'D 00:00:01.0 GameState.DebugPrintPower() -         tag=IS_BACON_POOL_MINION value=1',
+    'D 00:00:01.0 GameState.DebugPrintPower() -         tag=BACON_SUBSET_BEAST value=1',
+    'D 00:00:01.0 GameState.DebugPrintPower() -         tag=BACON_SUBSET_NAGA value=1',
+    'D 00:00:02.0 GameState.DebugPrintPower() -     FULL_ENTITY - Creating ID=11 CardID=BGS_999',
+  ];
+
+  const events: import('./logParser').LogEvent[] = [];
+  for (const line of lines) {
+    const e = parseLine(line);
+    if (e) events.push(e);
+  }
+
+  const constraintEvent = events.find(e => e.type === 'RACE_CONSTRAINT');
+  expect('RACE_CONSTRAINT emitted', constraintEvent?.type, 'RACE_CONSTRAINT');
+  const races = (constraintEvent as { type: 'RACE_CONSTRAINT'; races: string[] } | undefined)?.races ?? [];
+  expect('constraint has BEAST and NAGA', races.includes('BEAST') && races.includes('NAGA'), true);
+  expect('constraint has exactly 2 races', races.length, 2);
+}
+
+console.log('\n── Dual-tribe constraint stored in pendingConstraints ───────────────');
+{
+  const watcherStates: import('./types').GameState[] = [];
+  const m = new GameStateManager(s => watcherStates.push({ ...s }));
+  m.handleEvent({ type: 'GAME_START' });
+  m.handleEvent({ type: 'RACE_CONSTRAINT', races: ['BEAST', 'NAGA'] });
+  const s = watcherStates[watcherStates.length - 1];
+  expect('constraint forwarded as-is (no propagation in watcher)', s.availableRaces.length, 0);
+  expect('constraint in pendingConstraints', s.pendingConstraints.length, 1);
+  expect('constraint races', s.pendingConstraints[0], ['BEAST', 'NAGA']);
+}
 
 console.log(`\n${passed} passed, ${failed} failed\n`);
 if (failed > 0) process.exit(1);
