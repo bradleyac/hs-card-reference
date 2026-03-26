@@ -28,14 +28,24 @@ export function CardImage({ cardId, name, size = 256, className }: CardImageProp
     );
   }
 
-  const src = state === 'render' ? renderUrl(cardId, size) : artCropUrl(cardId);
+  if (state === 'crop') {
+    return (
+      <div className={`card-image-crop ${className ?? ''}`}>
+        <img
+          src={artCropUrl(cardId)}
+          alt={name}
+          onError={() => setState('failed')}
+        />
+      </div>
+    );
+  }
 
   return (
     <img
-      src={src}
+      src={renderUrl(cardId, size)}
       alt={name}
       className={className}
-      onError={() => setState(state === 'render' ? 'crop' : 'failed')}
+      onError={() => setState('crop')}
     />
   );
 }

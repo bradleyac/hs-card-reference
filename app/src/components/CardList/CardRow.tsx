@@ -1,4 +1,5 @@
 import type { BgCard } from '../../data/types';
+import { artCropUrl } from '../Common/CardImage';
 
 interface CardRowProps {
   card: BgCard;
@@ -43,6 +44,14 @@ export function CardRow({ card, onClick }: CardRowProps) {
       aria-label={card.name}
     >
       {card.techLevel !== null && <TierStars tier={card.techLevel} />}
+
+      <div className="card-row__thumb">
+        <img
+          src={artCropUrl(card.id)}
+          alt=""
+          onError={(e) => { (e.target as HTMLImageElement).parentElement!.style.display = 'none'; }}
+        />
+      </div>
 
       <div className="card-row__body">
         <div className="card-row__header">
