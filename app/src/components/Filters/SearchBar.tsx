@@ -29,22 +29,22 @@ export function SearchBar() {
       <span className="search-bar__icon" aria-hidden="true">🔍</span>
       <input
         ref={inputRef}
-        type="search"
+        type="text"
         className="search-bar__input"
         placeholder="Search cards… (/ or Ctrl+K)"
         value={searchQuery}
         onChange={(e) => setSearchQuery(e.target.value)}
         aria-label="Search cards"
       />
-      {searchQuery && (
-        <button
-          className="search-bar__clear"
-          onClick={() => setSearchQuery('')}
-          aria-label="Clear search"
-        >
-          ✕
-        </button>
-      )}
+      <button
+        className="search-bar__clear"
+        style={{ visibility: searchQuery ? 'visible' : 'hidden' }}
+        onClick={() => setSearchQuery('')}
+        aria-label="Clear search"
+        tabIndex={searchQuery ? 0 : -1}
+      >
+        ✕
+      </button>
     </div>
   );
 }
