@@ -29,7 +29,6 @@ export function useFilteredCards(cardsReady: boolean): BgCard[] {
     if (selectedRaces.length > 0) {
       cards = cards.filter(
         (c) =>
-          c.races.length === 0 ||
           c.races.some((r) => selectedRaces.includes(r)) ||
           c.races.includes('ALL')
       );

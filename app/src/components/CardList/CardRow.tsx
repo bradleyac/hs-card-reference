@@ -31,8 +31,10 @@ export function CardRow({ card, onClick }: CardRowProps) {
         <div className="card-row__header">
           <span className="card-row__name">{card.name}</span>
 
-          {card.races.length > 0 && card.races[0] !== 'ALL' && (
-            <span className="card-row__race">{card.races.map((r) => r[0]).join('/')}</span>
+          {card.races.length > 0 && (
+            <span className="card-row__race">
+              {card.races.includes('ALL') ? 'ALL' : card.races.map((r) => r[0]).join('/')}
+            </span>
           )}
 
           {card.attack !== null && card.health !== null && (
