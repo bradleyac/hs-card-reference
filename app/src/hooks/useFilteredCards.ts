@@ -115,12 +115,16 @@ function applyGameContextFilter(
     case 'TAVERN':
       // Filter by active tribes if we know them
       if (gameState.availableRaces.length > 0) {
-        return cards.filter(
-          (c) =>
-            c.races.length === 0 ||
-            c.races.includes('ALL') ||
-            c.races.some((r) => gameState.availableRaces.includes(r))
-        );
+        const activeRaces = new Set(gameState.availableRaces);
+        return cards.filter((c) => {
+          if (c.races.includes('ALL')) return true;
+          // Tribal minion: show only if its tribe is active
+          if (c.races.length > 0) return c.races.some((r) => activeRaces.has(r));
+          // Neutral with a tribe association (e.g. Prophet of the Boar): show only if that tribe is active
+          if (c.associatedRaces.length > 0) return c.associatedRaces.some((r) => activeRaces.has(r));
+          // Truly neutral: always show
+          return true;
+        });
       }
       return cards;
 
