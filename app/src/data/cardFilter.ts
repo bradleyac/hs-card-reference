@@ -28,6 +28,14 @@ export interface RawCard {
   battlegroundsAssociatedRaces?: string[];
 }
 
+// User-facing search aliases for race strings that differ from the display name
+const RACE_ALIASES: Record<string, string> = {
+  MECHANICAL: 'mech',
+};
+
+// All tribe keywords — added to ALL-type cards so they match any tribe search
+const ALL_TRIBE_KEYWORDS = ['beast', 'demon', 'dragon', 'elemental', 'mech', 'murloc', 'naga', 'pirate', 'quilboar', 'undead'];
+
 // Mechanics that map to synthetic keyword strings
 const MECHANIC_KEYWORD_MAP: Record<string, string> = {
   DIVINE_SHIELD: 'divine_shield',
@@ -53,6 +61,16 @@ function extractKeywords(raw: RawCard, category: BgCardCategory): string[] {
     if (mapped) kw.add(mapped);
     // Also add lowercase raw mechanic so users can search "reborn" etc.
     kw.add(m.toLowerCase());
+  }
+
+  // Race aliases — user-facing names that differ from the internal race string
+  const races = getRaces(raw);
+  if (races.includes('ALL')) {
+    for (const kw_ of ALL_TRIBE_KEYWORDS) kw.add(kw_);
+  } else {
+    for (const race of races) {
+      kw.add(RACE_ALIASES[race] ?? race.toLowerCase());
+    }
   }
 
   // Synthetic keywords
