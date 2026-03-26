@@ -1,36 +1,10 @@
 import type { BgCard } from '../../data/types';
 import { artCropUrl } from '../Common/CardImage';
+import { TierStars } from '../Common/TierStars';
 
 interface CardRowProps {
   card: BgCard;
   onClick: (card: BgCard) => void;
-}
-
-// Star layout per tier — each inner array is one row of stars
-const TIER_STAR_ROWS: number[][] = [
-  [],          // 0 unused
-  [1],         // Tier 1
-  [2],         // Tier 2
-  [2, 1],      // Tier 3
-  [2, 2],      // Tier 4
-  [2, 1, 2],   // Tier 5
-  [2, 2, 2],   // Tier 6
-  [2, 2, 2, 1], // Tier 7
-];
-
-function TierStars({ tier }: { tier: number }) {
-  const rows = TIER_STAR_ROWS[tier] ?? [];
-  return (
-    <span className="card-row__tier-stars" data-tier={tier}>
-      {rows.map((count, i) => (
-        <span key={i} className="card-row__tier-star-row">
-          {Array.from({ length: count }, (_, j) => (
-            <span key={j} className="card-row__tier-star">★</span>
-          ))}
-        </span>
-      ))}
-    </span>
-  );
 }
 
 export function CardRow({ card, onClick }: CardRowProps) {
@@ -43,7 +17,7 @@ export function CardRow({ card, onClick }: CardRowProps) {
       onKeyDown={(e) => e.key === 'Enter' && onClick(card)}
       aria-label={card.name}
     >
-      {card.techLevel !== null && <TierStars tier={card.techLevel} />}
+      {card.techLevel !== null && <TierStars tier={card.techLevel} className="card-row__tier-stars" />}
 
       <div className="card-row__thumb">
         <img

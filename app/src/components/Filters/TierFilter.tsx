@@ -1,6 +1,5 @@
 import { useFilterStore } from '../../state/filterStore';
-
-const TIER_COLORS = ['#888', '#1ea', '#48f', '#b5f', '#f80', '#fc0', '#f44'];
+import { TierStars } from '../Common/TierStars';
 
 export function TierFilter() {
   const { selectedTiers, toggleTier } = useFilterStore();
@@ -12,14 +11,13 @@ export function TierFilter() {
         return (
           <button
             key={tier}
-            className={`tier-pip ${active ? 'tier-pip--active' : ''}`}
-            style={{ '--tier-color': TIER_COLORS[tier - 1] } as React.CSSProperties}
+            className={`tier-btn ${active ? 'tier-btn--active' : ''}`}
             onClick={() => toggleTier(tier)}
             aria-pressed={active}
             aria-label={`Tier ${tier}`}
             title={`Tier ${tier}`}
           >
-            {tier}
+            <TierStars tier={tier} />
           </button>
         );
       })}
