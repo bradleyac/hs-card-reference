@@ -99,13 +99,17 @@ function stripHtml(text: string): string {
   return text.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
 }
 
+// Duos-only spells that lack a BGDUO prefix but are not in the Solo pool
+const DUOS_ONLY_IDS = new Set(['BG31_242', 'BG31_243', 'BG31_244']);
+
 /**
  * Attempt to classify a raw card into a BG category.
  * Returns null if the card is not relevant to Battlegrounds.
  */
 function classifyCategory(raw: RawCard): BgCardCategory | null {
-  // Duos-exclusive cards (BGDUO prefix) are not part of the Solo pool
+  // Duos-exclusive cards are not part of the Solo pool
   if (raw.id.startsWith('BGDUO')) return null;
+  if (DUOS_ONLY_IDS.has(raw.id)) return null;
 
   // Timewarped cards are flagged with battlegroundsTimewarpCard in the card data
   // (not via mechanics). Only include base minions — exclude golden variants (_G
