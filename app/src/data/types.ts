@@ -23,6 +23,8 @@ export interface BgCard {
   text: string;
 
   category: BgCardCategory;
+  /** Original HearthstoneJSON type, e.g. "MINION" or "BATTLEGROUND_SPELL" */
+  cardType: string;
   /** 1–6 for TAVERN_MINION; null for everything else */
   techLevel: number | null;
 
@@ -88,6 +90,8 @@ export type PanelId =
   | 'ANOMALY'
   | 'TIMEWARPED';
 
+export type CardTypeFilter = 'ALL' | 'MINION' | 'SPELL';
+
 export interface FilterState {
   searchQuery: string;
   /** Empty array = show all tribes */
@@ -95,4 +99,5 @@ export interface FilterState {
   /** Empty array = show all tiers */
   selectedTiers: number[];
   activePanel: PanelId;
+  cardTypeFilter: CardTypeFilter;
 }

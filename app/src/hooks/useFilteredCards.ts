@@ -8,7 +8,7 @@ import { getCardCache } from '../data/cardSync';
 /** Cards for the current panel, filtered by game context + user filters + search */
 export function useFilteredCards(cardsReady: boolean): BgCard[] {
   const gameState = useGameStore((s) => s.gameState);
-  const { activePanel, selectedRaces, selectedTiers, searchQuery } = useFilterStore();
+  const { activePanel, selectedRaces, selectedTiers, searchQuery, cardTypeFilter } = useFilterStore();
 
   return useMemo(() => {
     if (!cardsReady) return [];
@@ -34,6 +34,16 @@ export function useFilteredCards(cardsReady: boolean): BgCard[] {
       );
     }
 
+    // ── Card type filter (minion / spell) ───────────────────────────────────
+    if ((activePanel === 'TAVERN' || activePanel === 'TIMEWARPED') && cardTypeFilter !== 'ALL') {
+      if (cardTypeFilter === 'MINION') {
+        cards = cards.filter((c) => c.cardType === 'MINION');
+      } else {
+        // SPELL: include BATTLEGROUND_SPELL and HERO_POWER (timewarped hero powers)
+        cards = cards.filter((c) => c.cardType !== 'MINION');
+      }
+    }
+
     // ── User tier filter ────────────────────────────────────────────────────
     if ((activePanel === 'TAVERN' || activePanel === 'TIMEWARPED') && selectedTiers.length > 0) {
       cards = cards.filter((c) => c.techLevel !== null && selectedTiers.includes(c.techLevel));
@@ -55,7 +65,7 @@ export function useFilteredCards(cardsReady: boolean): BgCard[] {
     });
 
     return cards;
-  }, [gameState, activePanel, selectedRaces, selectedTiers, searchQuery, cardsReady]);
+  }, [gameState, activePanel, selectedRaces, selectedTiers, cardTypeFilter, searchQuery, cardsReady]);
 }
 
 function categoryMatchesPanel(card: BgCard, panel: PanelId): boolean {

@@ -4,6 +4,7 @@ import { PanelNav } from '../Common/PanelNav';
 import { SearchBar } from '../Filters/SearchBar';
 import { TribeFilter } from '../Filters/TribeFilter';
 import { TierFilter } from '../Filters/TierFilter';
+import { CardTypeToggle } from '../Filters/CardTypeToggle';
 import { CardList } from '../CardList/CardList';
 import { useFilteredCards } from '../../hooks/useFilteredCards';
 import { useFilterStore } from '../../state/filterStore';
@@ -46,6 +47,7 @@ export function AppShell({ syncStatus }: AppShellProps) {
 
         {showFilters && (
           <div className="filter-row">
+            <CardTypeToggle />
             <TribeFilter />
             <TierFilter tiers={activePanel === 'TIMEWARPED' ? [3, 5] : undefined} />
           </div>

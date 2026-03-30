@@ -1,12 +1,13 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import type { FilterState, PanelId } from '../data/types';
+import type { CardTypeFilter, FilterState, PanelId } from '../data/types';
 
 interface FilterStore extends FilterState {
   setSearchQuery: (q: string) => void;
   toggleRace: (race: string) => void;
   toggleTier: (tier: number) => void;
   setActivePanel: (panel: PanelId) => void;
+  setCardTypeFilter: (f: CardTypeFilter) => void;
   clearFilters: () => void;
 }
 
@@ -17,6 +18,7 @@ export const useFilterStore = create<FilterStore>()(
       selectedRaces: [],
       selectedTiers: [],
       activePanel: 'TAVERN' as PanelId,
+      cardTypeFilter: 'ALL' as CardTypeFilter,
 
       setSearchQuery: (searchQuery) => set({ searchQuery }),
 
@@ -40,7 +42,9 @@ export const useFilterStore = create<FilterStore>()(
 
       setActivePanel: (activePanel) => set({ activePanel }),
 
-      clearFilters: () => set({ searchQuery: '', selectedRaces: [], selectedTiers: [] }),
+      setCardTypeFilter: (cardTypeFilter) => set({ cardTypeFilter }),
+
+      clearFilters: () => set({ searchQuery: '', selectedRaces: [], selectedTiers: [], cardTypeFilter: 'ALL' }),
     }),
     {
       name: 'hs-card-ref-filters',
@@ -50,6 +54,7 @@ export const useFilterStore = create<FilterStore>()(
         activePanel: state.activePanel,
         selectedRaces: state.selectedRaces,
         selectedTiers: state.selectedTiers,
+        cardTypeFilter: state.cardTypeFilter,
       }),
     }
   )

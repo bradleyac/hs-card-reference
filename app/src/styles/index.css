@@ -210,6 +210,30 @@ button {
   color: #d4a830;
 }
 
+/* ─── Card type toggle ─────────────────────────────────────────────────────── */
+
+.card-type-toggle {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.card-type-btn {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  color: var(--text-2);
+  white-space: nowrap;
+  transition: background 0.1s, color 0.1s;
+}
+
+.card-type-btn--active {
+  background: rgba(184, 144, 10, 0.2);
+  border-color: #b8900a;
+  color: #d4a830;
+}
+
 /* ─── Card list ─────────────────────────────────────────────────────────────── */
 
 .card-list {

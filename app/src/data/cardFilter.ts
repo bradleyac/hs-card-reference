@@ -175,6 +175,7 @@ export function filterAndProjectCards(rawCards: RawCard[]): BgCard[] {
       name: raw.name,
       text: raw.text ? stripHtml(raw.text) : '',
       category,
+      cardType: raw.type ?? 'MINION',
       techLevel: raw.techLevel ?? null,
       attack: raw.attack ?? null,
       health: raw.health ?? null,
