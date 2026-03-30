@@ -17,8 +17,10 @@ export interface RawCard {
   mechanics?: string[];
   // Battlegrounds-specific boolean flags
   isBattlegroundsPoolMinion?: boolean;
+  isBattlegroundsPoolSpell?: boolean;
   battlegroundsHero?: boolean;
   isBattlegroundsBuddy?: boolean;
+  battlegroundsTimewarpCard?: number;
   // Cross-reference dbfIds
   heroPowerDbfId?: number;
   battlegroundsBuddyDbfId?: number;
@@ -105,24 +107,24 @@ function classifyCategory(raw: RawCard): BgCardCategory | null {
   // Duos-exclusive cards (BGDUO prefix) are not part of the Solo pool
   if (raw.id.startsWith('BGDUO')) return null;
 
-  if (raw.isBattlegroundsPoolMinion) return 'TAVERN_MINION';
+  // Timewarped cards are flagged with battlegroundsTimewarpCard in the card data
+  // (not via mechanics). Only include base minions — exclude golden variants (_G
+  // suffix) and non-minion types (spells, treasures).
+  if (raw.battlegroundsTimewarpCard && !raw.id.endsWith('_G')) {
+    return (raw.techLevel ?? 0) >= 4 ? 'TIMEWARPED_MAJOR' : 'TIMEWARPED_MINOR';
+  }
+
+  if (raw.isBattlegroundsPoolMinion || raw.isBattlegroundsPoolSpell) return 'TAVERN_MINION';
+
+  const mechs = raw.mechanics ?? [];
   if (raw.battlegroundsHero) return 'HERO';
   // Skin variants: type=HERO + battlegroundsSkinParentId set (battlegroundsHero is null)
   if (raw.type === 'HERO' && raw.battlegroundsSkinParentId) return 'HERO';
   if (raw.isBattlegroundsBuddy) return 'BUDDY';
 
-  const mechs = raw.mechanics ?? [];
-
   // Anomaly cards
   if (mechs.includes('BACON_ACTION_CARD') || mechs.includes('BACON_ANOMALY')) {
     return 'ANOMALY';
-  }
-
-  // Timewarped cards (major / minor distinguished by techLevel in card data)
-  if (mechs.includes('BACON_TIMEWARPED_MAJOR')) return 'TIMEWARPED_MAJOR';
-  if (mechs.includes('BACON_TIMEWARPED') || mechs.includes('TIMEWARPED')) {
-    // Blizzard uses techLevel >= 4 for "major" — fallback heuristic
-    return (raw.techLevel ?? 0) >= 4 ? 'TIMEWARPED_MAJOR' : 'TIMEWARPED_MINOR';
   }
 
   // Quest cards

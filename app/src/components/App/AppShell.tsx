@@ -35,7 +35,7 @@ export function AppShell({ syncStatus }: AppShellProps) {
     return () => observer.disconnect();
   }, [activePanel]);
 
-  const showFilters = activePanel === 'TAVERN';
+  const showFilters = activePanel === 'TAVERN' || activePanel === 'TIMEWARPED';
 
   return (
     <div className="app-shell">
@@ -47,7 +47,7 @@ export function AppShell({ syncStatus }: AppShellProps) {
         {showFilters && (
           <div className="filter-row">
             <TribeFilter />
-            <TierFilter />
+            <TierFilter tiers={activePanel === 'TIMEWARPED' ? [3, 5] : undefined} />
           </div>
         )}
 

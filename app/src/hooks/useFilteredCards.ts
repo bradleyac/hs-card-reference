@@ -34,8 +34,8 @@ export function useFilteredCards(cardsReady: boolean): BgCard[] {
       );
     }
 
-    // ── User tier filter (Tavern only) ──────────────────────────────────────
-    if (activePanel === 'TAVERN' && selectedTiers.length > 0) {
+    // ── User tier filter ────────────────────────────────────────────────────
+    if ((activePanel === 'TAVERN' || activePanel === 'TIMEWARPED') && selectedTiers.length > 0) {
       cards = cards.filter((c) => c.techLevel !== null && selectedTiers.includes(c.techLevel));
     }
 
@@ -138,9 +138,15 @@ function applyGameContextFilter(
       return cards;
 
     case 'TIMEWARPED':
-      if (gameState.timewarpedCardIds.length > 0) {
-        const twIds = new Set(gameState.timewarpedCardIds);
-        return cards.filter((c) => twIds.has(c.id));
+      // Filter by active tribes the same way as TAVERN
+      if (gameState.availableRaces.length > 0) {
+        const activeRaces = new Set(gameState.availableRaces);
+        return cards.filter((c) => {
+          if (c.races.includes('ALL')) return true;
+          if (c.races.length > 0) return c.races.some((r) => activeRaces.has(r));
+          if (c.associatedRaces.length > 0) return c.associatedRaces.some((r) => activeRaces.has(r));
+          return true;
+        });
       }
       return cards;
 
