@@ -23,7 +23,7 @@ export function TribeFilter() {
   // Show only tribes that are available in the current game (if known), else all
   let tribes: string[];
   if (gameState.availableRaces.length > 0) {
-    tribes = gameState.availableRaces;
+    tribes = gameState.availableRaces.filter((r) => r !== 'ALL');
   } else {
     // Derive from card data
     try {

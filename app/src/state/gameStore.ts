@@ -31,7 +31,9 @@ function applyPropagation(state: GameState): GameState {
   for (const heroId of state.heroCardIds) {
     const hero = cardCache.get(heroId);
     if (hero && hero.associatedRaces.length > 0) {
-      heroConstraints.push([...hero.associatedRaces]);
+      // 'ALL' is not a real BG tribe — ignore it as a propagation signal
+      const validRaces = hero.associatedRaces.filter((r) => r !== 'ALL');
+      if (validRaces.length > 0) heroConstraints.push(validRaces);
     }
   }
 
