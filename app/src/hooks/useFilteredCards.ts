@@ -45,7 +45,7 @@ export function useFilteredCards(cardsReady: boolean): BgCard[] {
     }
 
     // ── User tier filter ────────────────────────────────────────────────────
-    if ((activePanel === 'TAVERN' || activePanel === 'TIMEWARPED') && selectedTiers.length > 0) {
+    if ((activePanel === 'TAVERN' || activePanel === 'TIMEWARPED' || activePanel === 'BUDDIES') && selectedTiers.length > 0) {
       cards = cards.filter((c) => c.techLevel !== null && selectedTiers.includes(c.techLevel));
     }
 
@@ -102,24 +102,19 @@ function applyGameContextFilter(
         return true; // simplified — all hero powers shown; refine if needed
       });
 
-    case 'BUDDIES': {
-      // Only buddies whose parent hero is in this lobby
-      // hero.buddyDbfId → buddy.dbfId
-      const cache = getCardCache();
-      const buddyIds = new Set<string>();
-      for (const heroCardId of heroCardIds) {
-        const hero = cache.get(heroCardId);
-        if (hero?.buddyDbfId) {
-          for (const [id, card] of cache) {
-            if (card.dbfId === hero.buddyDbfId) {
-              buddyIds.add(id);
-            }
-          }
-        }
+    case 'BUDDIES':
+      // Filter by active tribes (same logic as TAVERN) — shows buddies
+      // available in the "buddies in the tavern" variant for this game's tribes
+      if (gameState.availableRaces.length > 0) {
+        const activeRaces = new Set(gameState.availableRaces);
+        return cards.filter((c) => {
+          if (c.races.includes('ALL')) return true;
+          if (c.races.length > 0) return c.races.some((r) => activeRaces.has(r));
+          if (c.associatedRaces.length > 0) return c.associatedRaces.some((r) => activeRaces.has(r));
+          return true;
+        });
       }
-      if (buddyIds.size === 0) return cards; // no data yet, show all
-      return cards.filter((c) => buddyIds.has(c.id));
-    }
+      return cards;
 
     case 'TAVERN':
       // Filter by active tribes if we know them
