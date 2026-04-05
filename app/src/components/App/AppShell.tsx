@@ -64,7 +64,7 @@ export function AppShell({ syncStatus }: AppShellProps) {
             <span>⚠ {syncStatus.message}</span>
           </div>
         ) : (
-          <CardList cards={cards} height={listHeight} />
+          <CardList cards={cards} height={listHeight} panel={activePanel} />
         )}
       </div>
 

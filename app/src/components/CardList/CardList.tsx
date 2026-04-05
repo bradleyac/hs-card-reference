@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
-import type { BgCard } from '../../data/types';
+import type { BgCard, PanelId } from '../../data/types';
 import { CardRow } from './CardRow';
+import { HeroRow } from './HeroRow';
 import { CardDetail } from './CardDetail';
 import { renderUrl, artCropUrl } from '../Common/CardImage';
 
 interface CardListProps {
   cards: BgCard[];
   height: number;
+  panel?: PanelId;
 }
 
 // Tracks which card IDs have already been prefetched this session
@@ -25,7 +27,7 @@ function prefetchImages(ids: string[]) {
   }
 }
 
-export function CardList({ cards, height }: CardListProps) {
+export function CardList({ cards, height, panel }: CardListProps) {
   const [selectedCard, setSelectedCard] = useState<BgCard | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -64,9 +66,14 @@ export function CardList({ cards, height }: CardListProps) {
         className="card-list"
         style={{ height, overflowY: 'auto' }}
       >
-        {cards.map((card) => (
-          <CardRow key={card.id} card={card} onClick={setSelectedCard} />
-        ))}
+        {panel === 'HEROES'
+          ? cards.map((card) => (
+              <HeroRow key={card.id} hero={card} onCardClick={setSelectedCard} />
+            ))
+          : cards.map((card) => (
+              <CardRow key={card.id} card={card} onClick={setSelectedCard} />
+            ))
+        }
       </div>
 
       {selectedCard && (

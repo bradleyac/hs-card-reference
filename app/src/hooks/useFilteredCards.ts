@@ -71,7 +71,7 @@ export function useFilteredCards(cardsReady: boolean): BgCard[] {
 function categoryMatchesPanel(card: BgCard, panel: PanelId): boolean {
   switch (panel) {
     case 'TAVERN': return card.category === 'TAVERN_MINION';
-    case 'HEROES': return card.category === 'HERO' || card.category === 'HERO_POWER';
+    case 'HEROES': return card.category === 'HERO';
     case 'BUDDIES': return card.category === 'BUDDY';
     case 'QUESTS': return card.category === 'QUEST' || card.category === 'QUEST_REWARD';
     case 'ANOMALY': return card.category === 'ANOMALY';
@@ -93,14 +93,7 @@ function applyGameContextFilter(
 
   switch (panel) {
     case 'HEROES':
-      // Only show heroes (and their hero powers) that are in this lobby
-      return cards.filter((c) => {
-        if (c.category === 'HERO') return heroCardIds.has(c.id);
-        // Hero power: show if it belongs to a hero in this lobby
-        // We match via heroPowerDbfId cross-reference stored on hero cards
-        // Since hero powers store heroPowerDbfId on the hero, we use a reverse lookup
-        return true; // simplified — all hero powers shown; refine if needed
-      });
+      return cards.filter((c) => heroCardIds.has(c.id));
 
     case 'BUDDIES':
       // Filter by active tribes (same logic as TAVERN) — shows buddies

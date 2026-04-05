@@ -376,6 +376,33 @@ button {
   overflow: visible;
 }
 
+/* ─── Hero group (HEROES panel) ─────────────────────────────────────────────── */
+
+.hero-group {
+  border-bottom: 2px solid var(--border);
+}
+
+.hero-group .card-row {
+  border-bottom: 1px solid rgba(61, 46, 24, 0.6);
+}
+
+.hero-group .card-row:last-child {
+  border-bottom: none;
+}
+
+.card-row--sub {
+  background: var(--bg-0);
+  padding-left: 16px;
+}
+
+.card-row__sublabel {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: var(--accent-dim);
+  line-height: 1.2;
+}
+
 /* ─── Card detail overlay ───────────────────────────────────────────────────── */
 
 .card-detail-backdrop {
