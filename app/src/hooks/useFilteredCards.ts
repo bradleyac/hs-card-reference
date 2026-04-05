@@ -45,7 +45,7 @@ export function useFilteredCards(cardsReady: boolean): BgCard[] {
     }
 
     // ── User tier filter ────────────────────────────────────────────────────
-    if ((activePanel === 'TAVERN' || activePanel === 'TIMEWARPED') && selectedTiers.length > 0) {
+    if ((activePanel === 'TAVERN' || activePanel === 'TIMEWARPED' || activePanel === 'BUDDIES') && selectedTiers.length > 0) {
       cards = cards.filter((c) => c.techLevel !== null && selectedTiers.includes(c.techLevel));
     }
 
