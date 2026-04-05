@@ -36,7 +36,8 @@ export function AppShell({ syncStatus }: AppShellProps) {
     return () => observer.disconnect();
   }, [activePanel]);
 
-  const showFilters = activePanel === 'TAVERN' || activePanel === 'TIMEWARPED';
+  const showTribeFilter = activePanel === 'TAVERN' || activePanel === 'TIMEWARPED' || activePanel === 'BUDDIES';
+  const showCardTypeAndTier = activePanel === 'TAVERN' || activePanel === 'TIMEWARPED';
 
   return (
     <div className="app-shell">
@@ -45,11 +46,11 @@ export function AppShell({ syncStatus }: AppShellProps) {
       <div className="panel-content" ref={contentRef}>
         <SearchBar />
 
-        {showFilters && (
+        {showTribeFilter && (
           <div className="filter-row">
-            <CardTypeToggle />
+            {showCardTypeAndTier && <CardTypeToggle />}
             <TribeFilter />
-            <TierFilter tiers={activePanel === 'TIMEWARPED' ? [3, 5] : undefined} />
+            {showCardTypeAndTier && <TierFilter tiers={activePanel === 'TIMEWARPED' ? [3, 5] : undefined} />}
           </div>
         )}
 
