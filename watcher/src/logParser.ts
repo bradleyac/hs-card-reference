@@ -215,6 +215,12 @@ function flushCurrentEntity(): LogEvent[] {
   if (isBgHeroCardId(currentCardId)) {
     if (currentEntityBgSlot) bgSlotToHeroCardId.set(currentEntityBgSlot, currentCardId);
     if (currentEntityZone === 'PLAY' && currentEntityController) {
+      // When the opponent's combat copy hero enters PLAY (controller=14), clear any stale
+      // snapshot entries from the previous combat against this same opponent before
+      // establishing the new controller→hero mapping.
+      if (currentEntityController === '14' && boardSnapshots.has(currentCardId)) {
+        boardSnapshots.get(currentCardId)!.clear();
+      }
       controllerToHeroCardId.set(currentEntityController, currentCardId);
     }
   }
