@@ -323,7 +323,10 @@ function processTagChange(entityRef: string, tag: string, value: string): LogEve
     (gameEntityId !== '' && entityId === gameEntityId);
   if (isGameEntity) {
     if (tag === 'NEXT_STEP' && value === 'FINAL_GAMEOVER') return [{ type: 'GAME_PHASE', phase: 'ENDED' }];
-    if (tag === 'NEXT_STEP' && value === 'MAIN_ACTION')    { currentTurn++; return [{ type: 'GAME_PHASE', phase: 'IN_GAME' }]; }
+    if (tag === 'NEXT_STEP' && value === 'MAIN_ACTION')    return [{ type: 'GAME_PHASE', phase: 'IN_GAME' }];
+    // NUM_TURNS_IN_PLAY increments once per phase (tavern + combat = 2 per actual turn),
+    // so floor-divide by 2 to get the player-visible turn number.
+    if (tag === 'NUM_TURNS_IN_PLAY') { currentTurn = Math.floor(parseInt(value, 10) / 2); return []; }
   }
 
   if (tag === 'BACON_CURRENT_COMBAT_PLAYER_ID') {

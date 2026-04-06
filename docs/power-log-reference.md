@@ -406,7 +406,7 @@ A more universal signal (works even for heroes with no tribe bonus) is `tag=PLAY
 
 ### Turn number
 
-`TAG_CHANGE Entity=GameEntity tag=NUM_TURNS_IN_PLAY value=N` increments once per full recruit+combat cycle.
+`TAG_CHANGE Entity=GameEntity tag=NUM_TURNS_IN_PLAY value=N` increments **twice per actual turn** — once at the start of the recruit phase and once at the start of the combat setup phase. The player-visible turn number is `floor(N / 2)`. The initial value emitted at game creation is 1 (yielding turn 0); the first real recruit phase sets it to 2 (turn 1).
 
 ### Recruit phase start (gold grant)
 
