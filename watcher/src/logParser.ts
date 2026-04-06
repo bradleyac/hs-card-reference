@@ -98,6 +98,7 @@ let currentEntityZonePos = 0;
 let currentEntityBgSlot = '';           // PLAYER_ID block tag (hero's BG slot 1-8)
 let currentEntityInitialPlacement = 0; // Bug A: PLAYER_LEADERBOARD_PLACE from block
 let currentEntityIsHero = false;        // BACON_HERO_CAN_BE_DRAFTED=1 seen
+let currentEntityCopiedFrom = '';       // COPIED_FROM_ENTITY_ID from block tags
 
 // Player block state (CREATE_GAME only)
 let inPlayerBlock = false;
@@ -130,6 +131,13 @@ const boardSnapshots = new Map<string, Map<string, BoardEntry>>();
  */
 const entityRegistry = new Map<string, BoardEntry>();
 
+/**
+ * Maps entityId → the entityId it was COPIED_FROM (board-reset copies).
+ * Used to evict the source entity from snapshots when the copy enters PLAY,
+ * preventing stale reset-source entries from accumulating in the snapshot.
+ */
+const copiedFromMap = new Map<string, string>();
+
 // ── Phase tracking ────────────────────────────────────────────────────────────
 let inCombat = false;
 let currentTurn = 0;
@@ -149,6 +157,17 @@ function snapshotToMinions(snapshot: Map<string, BoardEntry>): BoardMinion[] {
     .filter((e) => e.zone === 'PLAY')
     .sort((a, b) => a.zonePos - b.zonePos)
     .map((e) => ({ cardId: e.cardId, attack: e.atk, health: e.health, position: e.zonePos }));
+}
+
+/**
+ * When a board-reset copy enters PLAY, evict its source entity from all
+ * snapshots and boardEntities so it doesn't linger as a stale duplicate.
+ */
+function evictCopySource(sourceId: string): void {
+  boardEntities.delete(sourceId);
+  for (const snap of boardSnapshots.values()) {
+    snap.delete(sourceId);
+  }
 }
 
 // ── Entity flush ──────────────────────────────────────────────────────────────
@@ -235,9 +254,12 @@ function flushCurrentEntity(): LogEvent[] {
     // Always register every MINION entity so that ZONE=PLAY TAG_CHANGE events
     // can look up stats for minions that started in SETASIDE/HAND (tavern buys).
     entityRegistry.set(currentEntityId, { ...entry });
+    if (currentEntityCopiedFrom) copiedFromMap.set(currentEntityId, currentEntityCopiedFrom);
 
     if (currentEntityZone === 'PLAY' && currentEntityController !== '') {
       entry.zone = 'PLAY';
+      // Evict the reset source before adding the copy so the snapshot stays clean.
+      if (currentEntityCopiedFrom) evictCopySource(currentEntityCopiedFrom);
       boardEntities.set(currentEntityId, entry);
 
       const heroCardId = heroCardIdForEntry(entry);
@@ -269,6 +291,7 @@ function resetEntityAccumulators(): void {
   currentEntityBgSlot = '';
   currentEntityInitialPlacement = 0;
   currentEntityIsHero = false;
+  currentEntityCopiedFrom = '';
 }
 
 function resetState(): void {
@@ -285,6 +308,7 @@ function resetState(): void {
   boardEntities.clear();
   boardSnapshots.clear();
   entityRegistry.clear();
+  copiedFromMap.clear();
   inCombat = false;
   currentTurn = 0;
 }
@@ -362,6 +386,9 @@ function processTagChange(entityRef: string, tag: string, value: string): LogEve
         // Update the registry entry with the confirmed controller
         reg.controller = controller;
         const entry: BoardEntry = { ...reg, zone: 'PLAY' };
+        // Evict the reset source before adding the copy so the snapshot stays clean.
+        const sourceId = copiedFromMap.get(entityId);
+        if (sourceId) evictCopySource(sourceId);
         boardEntities.set(entityId, entry);
         const heroCardId = heroCardIdForEntry(entry);
         if (heroCardId) {
@@ -427,9 +454,7 @@ function processTagChange(entityRef: string, tag: string, value: string): LogEve
         const snap = boardSnapshots.get(heroCardId)!;
         if (snap.has(entityId)) {
           snap.get(entityId)!.zonePos = newPos;
-          if (!inCombat) {
-            return [{ type: 'PLAYER_BOARD', heroCardId, minions: snapshotToMinions(snap), turn: currentTurn }];
-          }
+          return [{ type: 'PLAYER_BOARD', heroCardId, minions: snapshotToMinions(snap), turn: currentTurn }];
         }
       }
       return [];
@@ -446,6 +471,11 @@ function processTagChange(entityRef: string, tag: string, value: string): LogEve
       }
       return [];
     }
+  }
+
+  // Standalone TAG_CHANGE for COPIED_FROM_ENTITY_ID (fires outside FULL_ENTITY blocks).
+  if (tag === 'COPIED_FROM_ENTITY_ID' && entityId && value && value !== '0') {
+    copiedFromMap.set(entityId, value);
   }
 
   return [];
@@ -530,6 +560,7 @@ export function parseLine(line: string): LogEvent[] {
           case 'HEALTH':                  currentEntityHealth = parseInt(tagValue, 10); break;
           case 'ZONE_POSITION':           currentEntityZonePos = parseInt(tagValue, 10); break;
           case 'PLAYER_ID':               currentEntityBgSlot = tagValue; break;
+          case 'COPIED_FROM_ENTITY_ID':   currentEntityCopiedFrom = tagValue; break;
           // Bug A fix: PLAYER_LEADERBOARD_PLACE is the signal that this entity is an
           // in-game hero (not merely a draft choice shown to the player). Capture the
           // initial placement and mark it as a real hero.
