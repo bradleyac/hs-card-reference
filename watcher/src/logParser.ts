@@ -2,12 +2,17 @@
  * Line-by-line Power.log state machine.
  *
  * Key facts learned from real logs:
- * - GameEntity ID varies per session (e.g. EntityID=4), NOT always 1
- * - BACON_HERO_CAN_BE_DRAFTED appears as an indented block tag, not TAG_CHANGE
- * - Anomaly is BACON_GLOBAL_ANOMALY_DBID in the CREATE_GAME GameEntity block
- * - BG mode detected from COIN_MANA_GEM tag on GameEntity
+ * - GameEntity ID varies per session (e.g. EntityID=16, not 1)
+ * - In CREATE_GAME there are only 2 Player blocks: the local player + Bob (BACON_DUMMY_PLAYER)
+ * - Hero-choice FULL_ENTITY blocks appear with CONTROLLER=<local player ID>;
+ *   the HERO_ENTITY tag in the Player block points to the placeholder (TB_BaconShop_HERO_PH)
+ * - Bug B fix: we build controllerToHeroCardId from the ZONE=PLAY TAG_CHANGE on the hero entity
+ * - Bug A fix: PLAYER_LEADERBOARD_PLACE in a FULL_ENTITY block is captured as the initial placement
+ * - FULL_ENTITY block tags are indented; any non-indented line (top-level TAG_CHANGE, etc.)
+ *   terminates the current open entity block and triggers a flush
  */
 
+import type { BoardMinion } from './types';
 
 export type LogEvent =
   | { type: 'GAME_START' }
@@ -17,52 +22,34 @@ export type LogEvent =
   | { type: 'TIMEWARPED_ENTITY'; cardId: string }
   | { type: 'AVAILABLE_RACES'; races: string[] }
   | { type: 'RACE_CONSTRAINT'; races: string[] }
-  | { type: 'GAME_PHASE'; phase: 'IN_GAME' | 'ENDED' };
+  | { type: 'GAME_PHASE'; phase: 'IN_GAME' | 'ENDED' }
+  | { type: 'PLAYER_PLACEMENT'; heroCardId: string; placement: number }
+  | { type: 'PLAYER_BOARD'; heroCardId: string; minions: BoardMinion[]; turn: number };
 
 // ── Regex patterns ────────────────────────────────────────────────────────────
 
-// Only parse GameState.DebugPrintPower lines (not PowerTaskList)
 const POWER_RE = /GameState\.DebugPrintPower\(\) - (.+)$/;
-
 const CREATE_GAME_RE = /^CREATE_GAME$/;
-
-// GameEntity EntityID=N  (inside CREATE_GAME block)
 const GAME_ENTITY_RE = /^\s+GameEntity EntityID=(\d+)/;
-
-// FULL_ENTITY - Creating ID=N CardID=X
-const FULL_ENTITY_RE = /FULL_ENTITY - Creating ID=(\d+) CardID=(\S+)/;
-
-// SHOW_ENTITY - Updating Entity=... CardID=X
+const PLAYER_BLOCK_RE = /^\s+Player EntityID=(\d+) PlayerID=(\d+)/;
+const FULL_ENTITY_RE = /FULL_ENTITY - Creating ID=(\d+) CardID=(\S*)/;
 const SHOW_ENTITY_CARDID_RE = /SHOW_ENTITY - Updating Entity=.+? CardID=(\S+)/;
-
-// Indented block tag: "    tag=TAGNAME value=VALUE"
+/** Matches only indented block tags inside a FULL_ENTITY/Player/GameEntity block */
 const BLOCK_TAG_RE = /^\s+tag=(\S+) value=(\S+)/;
-
-// TAG_CHANGE (top-level or indented)
 const TAG_CHANGE_RE = /TAG_CHANGE Entity=(.+?) tag=(\S+) value=(\S+)/;
 
-// Extract entity ID from either a bare number or "[entityName=... id=N ...]"
 function extractEntityId(ref: string): string {
   if (/^\d+$/.test(ref)) return ref;
   const m = /\bid=(\d+)\b/.exec(ref);
   return m ? m[1] : '';
 }
 
-// Extract cardId from entity reference "[entityName=... cardId=X ...]"
 function extractCardId(ref: string): string {
   const m = /\bcardId=(\S+?)\s/.exec(ref);
   return m ? m[1] : '';
 }
 
-// ── Mutable parser state (reset on CREATE_GAME) ───────────────────────────────
-
-let gameEntityId = '';              // entity ID of the GameEntity for this session
-let currentCardId = '';             // card ID of current FULL_ENTITY block
-let currentEntityIsPoolMinion = false;
-let currentEntitySubsets: string[] = []; // BACON_SUBSET tribes seen on current entity
-const availableRaceSet = new Set<string>(); // tribes confirmed for this game
-
-// BACON_SUBSET_* tag suffix → HearthstoneJSON race string
+// ── BACON_SUBSET_* → race string ─────────────────────────────────────────────
 const BACON_SUBSET_TO_RACE: Record<string, string> = {
   BEAST:      'BEAST',
   DEMON:      'DEMON',
@@ -77,22 +64,119 @@ const BACON_SUBSET_TO_RACE: Record<string, string> = {
 };
 
 const PLACEHOLDER_HERO_ID = 'TB_BaconShop_HERO_PH';
+const BOB_CARD_ID = 'TB_BaconShopBob';
 
 function isBgHeroCardId(cardId: string): boolean {
-  if (!cardId || cardId === PLACEHOLDER_HERO_ID) return false;
-  return (
-    /^BG\d+_HERO_/.test(cardId) ||
-    /^TB_BaconShop_HERO_\d+/.test(cardId)
-  );
+  if (!cardId || cardId === PLACEHOLDER_HERO_ID || cardId === BOB_CARD_ID) return false;
+  // Use a lookahead (?=$|[^a-z0-9]) so that \d+ cannot backtrack and allow a
+  // trailing digit to satisfy [^a-z]. This correctly excludes hero powers like
+  // BG24_HERO_204p (p is a-z → fails) and BG24_HERO_204pe6 (p is a-z → fails)
+  // while accepting BG24_HERO_204 (end-of-string), BG24_HERO_204_SKIN_E (_ is [^a-z0-9]),
+  // TB_BaconShop_HERO_43_SKIN_G, TB_BaconShop_HERO_93, etc.
+  return /^BG\d+_HERO_\d+(?=$|[^a-z0-9])/.test(cardId) ||
+         /^TB_BaconShop_HERO_\d+(?=$|[^a-z0-9])/.test(cardId);
 }
+
+// ── Parser state (reset on CREATE_GAME) ──────────────────────────────────────
+
+let gameEntityId = '';
+
+// Pool-minion accumulation
+let currentEntityIsPoolMinion = false;
+let currentEntitySubsets: string[] = [];
+const availableRaceSet = new Set<string>();
+
+// Current FULL_ENTITY / SHOW_ENTITY being accumulated
+let currentEntityId = '';
+let currentCardId = '';
+let currentEntityController = '';
+let currentEntityZone = '';
+let currentEntityAtk = 0;
+let currentEntityHealth = 0;
+let currentEntityCardType = '';
+let currentEntityZonePos = 0;
+let currentEntityBgSlot = '';           // PLAYER_ID block tag (hero's BG slot 1-8)
+let currentEntityInitialPlacement = 0; // Bug A: PLAYER_LEADERBOARD_PLACE from block
+let currentEntityIsHero = false;        // BACON_HERO_CAN_BE_DRAFTED=1 seen
+let currentEntityCopiedFrom = '';       // COPIED_FROM_ENTITY_ID from block tags
+
+// Player block state (CREATE_GAME only)
+let inPlayerBlock = false;
+let currentPlayerId = '';
+let bobPlayerId = '';
+
+// ── Hero → controller mapping (Bug B fix) ────────────────────────────────────
+/** controller value → heroCardId for heroes in ZONE=PLAY */
+const controllerToHeroCardId = new Map<string, string>();
+/** BG slot (PLAYER_ID tag) → heroCardId */
+const bgSlotToHeroCardId = new Map<string, string>();
+
+// ── Board state ───────────────────────────────────────────────────────────────
+interface BoardEntry {
+  cardId: string;
+  controller: string;
+  bgSlot: string;
+  zone: string;
+  atk: number;
+  health: number;
+  zonePos: number;
+}
+const boardEntities = new Map<string, BoardEntry>();
+const boardSnapshots = new Map<string, Map<string, BoardEntry>>();
+
+/**
+ * Stores stats for ALL FULL_ENTITY MINION blocks regardless of initial zone.
+ * Used to seed boardEntities when a ZONE=PLAY TAG_CHANGE fires for an entity
+ * that started in SETASIDE or HAND (tavern-bought minions).
+ */
+const entityRegistry = new Map<string, BoardEntry>();
+
+/**
+ * Maps entityId → the entityId it was COPIED_FROM (board-reset copies).
+ * Used to evict the source entity from snapshots when the copy enters PLAY,
+ * preventing stale reset-source entries from accumulating in the snapshot.
+ */
+const copiedFromMap = new Map<string, string>();
+
+// ── Phase tracking ────────────────────────────────────────────────────────────
+let inCombat = false;
+let currentTurn = 0;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function heroCardIdForEntry(entry: BoardEntry): string | null {
+  const byController = controllerToHeroCardId.get(entry.controller);
+  if (byController) return byController;
+  const slot = entry.bgSlot;
+  if (slot) return bgSlotToHeroCardId.get(slot) ?? null;
+  return null;
+}
+
+function snapshotToMinions(snapshot: Map<string, BoardEntry>): BoardMinion[] {
+  return Array.from(snapshot.values())
+    .filter((e) => e.zone === 'PLAY')
+    .sort((a, b) => a.zonePos - b.zonePos)
+    .map((e) => ({ cardId: e.cardId, attack: e.atk, health: e.health, position: e.zonePos }));
+}
+
+/**
+ * When a board-reset copy enters PLAY, evict its source entity from all
+ * snapshots and boardEntities so it doesn't linger as a stale duplicate.
+ */
+function evictCopySource(sourceId: string): void {
+  boardEntities.delete(sourceId);
+  for (const snap of boardSnapshots.values()) {
+    snap.delete(sourceId);
+  }
+}
+
+// ── Entity flush ──────────────────────────────────────────────────────────────
 
 type FlushResult =
   | { kind: 'confirmed'; race: string }
   | { kind: 'constraint'; races: string[] }
   | null;
 
-// Called at each entity boundary. Emits a confirmed race (1 subset) or a
-// constraint (2 subsets = "at least one of these is active"). >2 subsets ignored.
 function flushEntitySubsets(): FlushResult {
   if (currentEntityIsPoolMinion) {
     if (currentEntitySubsets.length === 1) {
@@ -118,138 +202,406 @@ function flushEntitySubsets(): FlushResult {
   return null;
 }
 
+/**
+ * Flush the current FULL_ENTITY accumulator state and return any events to emit.
+ * Called at every entity boundary (new FULL_ENTITY, new SHOW_ENTITY, or any
+ * non-indented top-level line).
+ */
+function flushCurrentEntity(): LogEvent[] {
+  if (!currentEntityId && !currentEntityIsHero) return [];
+  const events: LogEvent[] = [];
+
+  // Hero mappings (Bug B fix)
+  if (isBgHeroCardId(currentCardId)) {
+    if (currentEntityBgSlot) bgSlotToHeroCardId.set(currentEntityBgSlot, currentCardId);
+    if (currentEntityZone === 'PLAY' && currentEntityController) {
+      controllerToHeroCardId.set(currentEntityController, currentCardId);
+    }
+  }
+
+  // Hero events (Bug A fix: emit HERO_ENTITY + initial placement from block)
+  if (currentEntityIsHero && isBgHeroCardId(currentCardId)) {
+    events.push({ type: 'HERO_ENTITY', cardId: currentCardId });
+    if (currentEntityInitialPlacement > 0) {
+      events.push({
+        type: 'PLAYER_PLACEMENT',
+        heroCardId: currentCardId,
+        placement: currentEntityInitialPlacement,
+      });
+    }
+  }
+
+  // Pool-minion tribe detection
+  const flush = flushEntitySubsets();
+  if (flush?.kind === 'confirmed') {
+    events.push({ type: 'AVAILABLE_RACES', races: Array.from(availableRaceSet) });
+  } else if (flush?.kind === 'constraint') {
+    events.push({ type: 'RACE_CONSTRAINT', races: flush.races });
+  }
+
+  // Board minion tracking
+  if (currentEntityId && currentEntityCardType === 'MINION') {
+    const entry: BoardEntry = {
+      cardId: currentCardId,
+      controller: currentEntityController,
+      bgSlot: currentEntityBgSlot,
+      zone: currentEntityZone,
+      atk: currentEntityAtk,
+      health: currentEntityHealth,
+      zonePos: currentEntityZonePos,
+    };
+
+    // Always register every MINION entity so that ZONE=PLAY TAG_CHANGE events
+    // can look up stats for minions that started in SETASIDE/HAND (tavern buys).
+    entityRegistry.set(currentEntityId, { ...entry });
+    if (currentEntityCopiedFrom) copiedFromMap.set(currentEntityId, currentEntityCopiedFrom);
+
+    if (currentEntityZone === 'PLAY' && currentEntityController !== '') {
+      entry.zone = 'PLAY';
+      // Evict the reset source before adding the copy so the snapshot stays clean.
+      if (currentEntityCopiedFrom) evictCopySource(currentEntityCopiedFrom);
+      boardEntities.set(currentEntityId, entry);
+
+      const heroCardId = heroCardIdForEntry(entry);
+      if (heroCardId) {
+        if (!boardSnapshots.has(heroCardId)) boardSnapshots.set(heroCardId, new Map());
+        boardSnapshots.get(heroCardId)!.set(currentEntityId, { ...entry });
+        events.push({
+          type: 'PLAYER_BOARD',
+          heroCardId,
+          minions: snapshotToMinions(boardSnapshots.get(heroCardId)!),
+          turn: currentTurn,
+        });
+      }
+    }
+  }
+
+  return events;
+}
+
+function resetEntityAccumulators(): void {
+  currentEntityId = '';
+  currentCardId = '';
+  currentEntityController = '';
+  currentEntityZone = '';
+  currentEntityAtk = 0;
+  currentEntityHealth = 0;
+  currentEntityCardType = '';
+  currentEntityZonePos = 0;
+  currentEntityBgSlot = '';
+  currentEntityInitialPlacement = 0;
+  currentEntityIsHero = false;
+  currentEntityCopiedFrom = '';
+}
+
 function resetState(): void {
   gameEntityId = '';
-  currentCardId = '';
   currentEntityIsPoolMinion = false;
   currentEntitySubsets = [];
   availableRaceSet.clear();
+  resetEntityAccumulators();
+  inPlayerBlock = false;
+  currentPlayerId = '';
+  bobPlayerId = '';
+  controllerToHeroCardId.clear();
+  bgSlotToHeroCardId.clear();
+  boardEntities.clear();
+  boardSnapshots.clear();
+  entityRegistry.clear();
+  copiedFromMap.clear();
+  inCombat = false;
+  currentTurn = 0;
+}
+
+// ── TAG_CHANGE handler (extracted to avoid duplication after flush) ────────────
+
+function processTagChange(entityRef: string, tag: string, value: string): LogEvent[] {
+  const entityId = extractEntityId(entityRef);
+
+  // GameEntity-level
+  const isGameEntity = entityRef === 'GameEntity' ||
+    (gameEntityId !== '' && entityId === gameEntityId);
+  if (isGameEntity) {
+    if (tag === 'NEXT_STEP' && value === 'FINAL_GAMEOVER') return [{ type: 'GAME_PHASE', phase: 'ENDED' }];
+    if (tag === 'NEXT_STEP' && value === 'MAIN_ACTION')    return [{ type: 'GAME_PHASE', phase: 'IN_GAME' }];
+    if (tag === 'NUM_TURNS_IN_PLAY') { currentTurn = parseInt(value, 10); return []; }
+  }
+
+  if (tag === 'BACON_CURRENT_COMBAT_PLAYER_ID') {
+    if (value === '0') {
+      inCombat = false;
+      // Eagerly drop the combat ghost mapping so that post-combat entity cleanup
+      // (opponent minions leaving PLAY after inCombat=false) never finds a heroCardId
+      // and therefore never erases the opponent's board snapshot.
+      controllerToHeroCardId.delete('14');
+    } else {
+      inCombat = true;
+    }
+    return [];
+  }
+
+  // PLAYER_LEADERBOARD_PLACE via TAG_CHANGE — emit HERO_ENTITY too so heroes
+  // whose block tags don't include PLAYER_LEADERBOARD_PLACE (e.g. the local
+  // player's chosen hero which only receives this via TAG_CHANGE) still appear
+  // in heroCardIds. The manager deduplicates.
+  if (tag === 'PLAYER_LEADERBOARD_PLACE') {
+    const cardId = extractCardId(entityRef);
+    if (cardId && isBgHeroCardId(cardId)) {
+      return [
+        { type: 'HERO_ENTITY', cardId },
+        { type: 'PLAYER_PLACEMENT', heroCardId: cardId, placement: parseInt(value, 10) },
+      ];
+    }
+  }
+
+  // BACON_TIMEWARPED via TAG_CHANGE
+  if (tag === 'BACON_TIMEWARPED' && value === '1') {
+    const cardId = extractCardId(entityRef) || currentCardId;
+    if (cardId) return [{ type: 'TIMEWARPED_ENTITY', cardId }];
+  }
+
+  // Hero ZONE transitions → update controllerToHeroCardId (Bug B)
+  if (tag === 'ZONE' && entityId) {
+    const cardId = extractCardId(entityRef);
+    if (cardId && isBgHeroCardId(cardId)) {
+      if (value === 'PLAY') {
+        const m = /\bplayer=(\d+)\b/.exec(entityRef);
+        if (m) controllerToHeroCardId.set(m[1], cardId);
+      } else {
+        for (const [ctrl, hId] of controllerToHeroCardId) {
+          if (hId === cardId) { controllerToHeroCardId.delete(ctrl); break; }
+        }
+      }
+      return [];
+    }
+
+    // Minion entering PLAY for the first time (started in SETASIDE/HAND — tavern buy).
+    // The initial FULL_ENTITY block had zone≠PLAY so it was only stored in entityRegistry.
+    // Now that it's entering PLAY, seed it into boardEntities and update the snapshot.
+    if (value === 'PLAY' && !boardEntities.has(entityId)) {
+      const reg = entityRegistry.get(entityId);
+      if (reg) {
+        const playerMatch = /\bplayer=(\d+)\b/.exec(entityRef);
+        const controller = playerMatch ? playerMatch[1] : reg.controller;
+        // Update the registry entry with the confirmed controller
+        reg.controller = controller;
+        const entry: BoardEntry = { ...reg, zone: 'PLAY' };
+        // Evict the reset source before adding the copy so the snapshot stays clean.
+        const sourceId = copiedFromMap.get(entityId);
+        if (sourceId) evictCopySource(sourceId);
+        boardEntities.set(entityId, entry);
+        const heroCardId = heroCardIdForEntry(entry);
+        if (heroCardId) {
+          if (!boardSnapshots.has(heroCardId)) boardSnapshots.set(heroCardId, new Map());
+          boardSnapshots.get(heroCardId)!.set(entityId, { ...entry });
+          return [{ type: 'PLAYER_BOARD', heroCardId, minions: snapshotToMinions(boardSnapshots.get(heroCardId)!), turn: currentTurn }];
+        }
+      }
+    }
+  }
+
+  // Board entity updates
+  if (entityId && boardEntities.has(entityId)) {
+    const entry = boardEntities.get(entityId)!;
+
+    if (tag === 'ATK' || tag === 'HEALTH') {
+      const v = parseInt(value, 10);
+      if (tag === 'ATK') entry.atk = v; else entry.health = v;
+      const heroCardId = heroCardIdForEntry(entry);
+      if (heroCardId && boardSnapshots.has(heroCardId)) {
+        const snap = boardSnapshots.get(heroCardId)!;
+        if (snap.has(entityId)) {
+          const se = snap.get(entityId)!;
+          if (tag === 'ATK') se.atk = v; else se.health = v;
+          return [{ type: 'PLAYER_BOARD', heroCardId, minions: snapshotToMinions(snap), turn: currentTurn }];
+        }
+      }
+      return [];
+    }
+
+    if (tag === 'ZONE') {
+      const prevZone = entry.zone;
+      entry.zone = value;
+      if (value === 'PLAY') {
+        const heroCardId = heroCardIdForEntry(entry);
+        if (heroCardId) {
+          if (!boardSnapshots.has(heroCardId)) boardSnapshots.set(heroCardId, new Map());
+          const snap = boardSnapshots.get(heroCardId)!;
+          snap.set(entityId, { ...entry });
+          return [{ type: 'PLAYER_BOARD', heroCardId, minions: snapshotToMinions(snap), turn: currentTurn }];
+        }
+      } else if (prevZone === 'PLAY') {
+        boardEntities.delete(entityId);
+        const heroCardId = heroCardIdForEntry(entry);
+        if (heroCardId && boardSnapshots.has(heroCardId) && !inCombat) {
+          boardSnapshots.get(heroCardId)!.delete(entityId);
+          return [{ type: 'PLAYER_BOARD', heroCardId, minions: snapshotToMinions(boardSnapshots.get(heroCardId)!), turn: currentTurn }];
+        }
+      }
+      return [];
+    }
+
+    if (tag === 'ZONE_POSITION') {
+      const newPos = parseInt(value, 10);
+      entry.zonePos = newPos;
+      // ZONE_POSITION=0 during combat is the engine's pre-death cleanup — skip it
+      // so the snapshot preserves the entity's last real board position.
+      // All other position updates (including during combat for newly-spawned minions)
+      // should be reflected in the snapshot.
+      if (inCombat && newPos === 0) return [];
+      const heroCardId = heroCardIdForEntry(entry);
+      if (heroCardId && boardSnapshots.has(heroCardId)) {
+        const snap = boardSnapshots.get(heroCardId)!;
+        if (snap.has(entityId)) {
+          snap.get(entityId)!.zonePos = newPos;
+          return [{ type: 'PLAYER_BOARD', heroCardId, minions: snapshotToMinions(snap), turn: currentTurn }];
+        }
+      }
+      return [];
+    }
+
+    if (tag === 'CONTROLLER') {
+      const oldHero = heroCardIdForEntry(entry);
+      if (oldHero && boardSnapshots.has(oldHero)) boardSnapshots.get(oldHero)!.delete(entityId);
+      entry.controller = value;
+      const newHero = heroCardIdForEntry(entry);
+      if (newHero) {
+        if (!boardSnapshots.has(newHero)) boardSnapshots.set(newHero, new Map());
+        boardSnapshots.get(newHero)!.set(entityId, { ...entry });
+      }
+      return [];
+    }
+  }
+
+  // Standalone TAG_CHANGE for COPIED_FROM_ENTITY_ID (fires outside FULL_ENTITY blocks).
+  if (tag === 'COPIED_FROM_ENTITY_ID' && entityId && value && value !== '0') {
+    copiedFromMap.set(entityId, value);
+  }
+
+  return [];
 }
 
 // ── Main parse function ───────────────────────────────────────────────────────
 
-export function parseLine(line: string): LogEvent | null {
+export function parseLine(line: string): LogEvent[] {
   const powerMatch = POWER_RE.exec(line);
-  if (!powerMatch) return null;
+  if (!powerMatch) return [];
 
-  const raw = powerMatch[1]; // preserve leading whitespace
+  const raw = powerMatch[1];
   const content = raw.trim();
 
   try {
     // ── CREATE_GAME ───────────────────────────────────────────────────────────
     if (CREATE_GAME_RE.test(content)) {
       resetState();
-      return { type: 'GAME_START' };
+      return [{ type: 'GAME_START' }];
     }
 
-    // ── GameEntity EntityID=N (inside CREATE_GAME) ────────────────────────────
+    // ── GameEntity EntityID=N ─────────────────────────────────────────────────
     const gameEntityMatch = GAME_ENTITY_RE.exec(raw);
     if (gameEntityMatch) {
       gameEntityId = gameEntityMatch[1];
-      return null;
+      inPlayerBlock = false;
+      return [];
+    }
+
+    // ── Player EntityID=N PlayerID=M ─────────────────────────────────────────
+    const playerBlockMatch = PLAYER_BLOCK_RE.exec(raw);
+    if (playerBlockMatch) {
+      inPlayerBlock = true;
+      currentPlayerId = playerBlockMatch[2];
+      return [];
     }
 
     // ── FULL_ENTITY - Creating ────────────────────────────────────────────────
     const fullEntityMatch = FULL_ENTITY_RE.exec(content);
     if (fullEntityMatch) {
-      const flush = flushEntitySubsets();
+      const events = flushCurrentEntity();
+      resetEntityAccumulators();
+      currentEntityId = fullEntityMatch[1];
       currentCardId = fullEntityMatch[2];
-      if (flush?.kind === 'confirmed') return { type: 'AVAILABLE_RACES', races: Array.from(availableRaceSet) };
-      if (flush?.kind === 'constraint') return { type: 'RACE_CONSTRAINT', races: flush.races };
-      return null;
+      inPlayerBlock = false;
+      return events;
     }
 
     // ── SHOW_ENTITY ───────────────────────────────────────────────────────────
     const showEntityMatch = SHOW_ENTITY_CARDID_RE.exec(content);
     if (showEntityMatch) {
-      const flush = flushEntitySubsets();
+      const events = flushCurrentEntity();
+      resetEntityAccumulators();
       currentCardId = showEntityMatch[1];
-      if (flush?.kind === 'confirmed') return { type: 'AVAILABLE_RACES', races: Array.from(availableRaceSet) };
-      if (flush?.kind === 'constraint') return { type: 'RACE_CONSTRAINT', races: flush.races };
-      return null;
+      inPlayerBlock = false;
+      return events;
     }
 
-    // ── Indented block tags (tag=X value=Y within a FULL_ENTITY/GameEntity block)
+    // ── Indented block tags (inside open entity/player/gameentity block) ──────
     const blockTagMatch = BLOCK_TAG_RE.exec(raw);
     if (blockTagMatch) {
       const [, tagName, tagValue] = blockTagMatch;
 
-      // BG mode detection: COIN_MANA_GEM on GameEntity
-      if (tagName === 'COIN_MANA_GEM' && tagValue === '1') {
-        return { type: 'BG_MODE_CONFIRMED' };
+      if (inPlayerBlock) {
+        if (tagName === 'BACON_DUMMY_PLAYER' && tagValue === '1') bobPlayerId = currentPlayerId;
+        return [];
       }
 
+      // Tags on the GameEntity
+      if (tagName === 'COIN_MANA_GEM' && tagValue === '1') return [{ type: 'BG_MODE_CONFIRMED' }];
       if (tagName === 'BACON_GLOBAL_ANOMALY_DBID' && tagValue !== '0') {
-        return { type: 'ANOMALY_DBID', dbfId: parseInt(tagValue, 10) };
+        return [{ type: 'ANOMALY_DBID', dbfId: parseInt(tagValue, 10) }];
       }
 
-      // (BACON_HERO_CAN_BE_DRAFTED marks offered choices, not playing heroes — ignored)
-
-      // PLAYER_LEADERBOARD_PLACE in a hero FULL_ENTITY block = this hero is actually playing.
-      // This is the universal signal (tag=3026 only appears for heroes with a tribe bonus,
-      // so Patchwerk and others without tribe bonuses are missed without this).
-      if (tagName === 'PLAYER_LEADERBOARD_PLACE' && currentCardId && isBgHeroCardId(currentCardId)) {
-        return { type: 'HERO_ENTITY', cardId: currentCardId };
+      // Tags on the current FULL_ENTITY
+      if (currentEntityId) {
+        switch (tagName) {
+          case 'CONTROLLER':              currentEntityController = tagValue; break;
+          case 'ZONE':                    currentEntityZone = tagValue; break;
+          case 'CARDTYPE':                currentEntityCardType = tagValue; break;
+          case 'ATK':                     currentEntityAtk = parseInt(tagValue, 10); break;
+          case 'HEALTH':                  currentEntityHealth = parseInt(tagValue, 10); break;
+          case 'ZONE_POSITION':           currentEntityZonePos = parseInt(tagValue, 10); break;
+          case 'PLAYER_ID':               currentEntityBgSlot = tagValue; break;
+          case 'COPIED_FROM_ENTITY_ID':   currentEntityCopiedFrom = tagValue; break;
+          // Bug A fix: PLAYER_LEADERBOARD_PLACE is the signal that this entity is an
+          // in-game hero (not merely a draft choice shown to the player). Capture the
+          // initial placement and mark it as a real hero.
+          case 'PLAYER_LEADERBOARD_PLACE':
+            currentEntityInitialPlacement = parseInt(tagValue, 10);
+            currentEntityIsHero = true;
+            break;
+        }
       }
 
-      // Timewarped: BACON_TIMEWARPED within a FULL_ENTITY
       if (tagName === 'BACON_TIMEWARPED' && tagValue === '1' && currentCardId) {
-        return { type: 'TIMEWARPED_ENTITY', cardId: currentCardId };
+        return [{ type: 'TIMEWARPED_ENTITY', cardId: currentCardId }];
       }
-
-      // IS_BACON_POOL_MINION marks this entity as a pool minion — subsequent BACON_SUBSET_*
-      // tags on the same entity tell us which tribe is in the pool this game.
       if (tagName === 'IS_BACON_POOL_MINION' && tagValue === '1') {
         currentEntityIsPoolMinion = true;
-        return null;
+        return [];
       }
-
-      // Accumulate BACON_SUBSET_<TRIBE> tags on pool minions.
-      // We only confirm a tribe after the entity block closes (in flushEntitySubsets),
-      // requiring exactly one BACON_SUBSET tag — dual-tribe minions are excluded.
       if (currentEntityIsPoolMinion && tagValue === '1' && tagName.startsWith('BACON_SUBSET_')) {
         currentEntitySubsets.push(tagName.slice('BACON_SUBSET_'.length));
       }
 
-      return null;
+      return [];
     }
 
-    // ── TAG_CHANGE ────────────────────────────────────────────────────────────
+    // ── TAG_CHANGE (top-level, non-indented) ──────────────────────────────────
     const tagMatch = TAG_CHANGE_RE.exec(content);
     if (tagMatch) {
       const [, entityRef, tag, value] = tagMatch;
-      const entityId = extractEntityId(entityRef);
 
-      // Game-level tags on the GameEntity (referenced by ID or by name "GameEntity")
-      const isGameEntity = entityRef === 'GameEntity' || (gameEntityId !== '' && entityId === gameEntityId);
-      if (isGameEntity) {
-        if (tag === 'NEXT_STEP' && value === 'FINAL_GAMEOVER') {
-          return { type: 'GAME_PHASE', phase: 'ENDED' };
-        }
-        if (tag === 'NEXT_STEP' && value === 'MAIN_ACTION') {
-          return { type: 'GAME_PHASE', phase: 'IN_GAME' };
-        }
-      }
+      // Any non-indented line closes the open FULL_ENTITY block
+      const flushEvents = flushCurrentEntity();
+      resetEntityAccumulators();
+      inPlayerBlock = false;
 
-      // tag=3026 on a BG hero entity = that hero is actually playing in this game
-      if (tag === '3026') {
-        const cardId = extractCardId(entityRef);
-        if (cardId && isBgHeroCardId(cardId)) {
-          return { type: 'HERO_ENTITY', cardId };
-        }
-      }
-
-      // BACON_TIMEWARPED as TAG_CHANGE (in-game reveals)
-      if (tag === 'BACON_TIMEWARPED' && value === '1') {
-        const cardId = extractCardId(entityRef) || currentCardId;
-        if (cardId) return { type: 'TIMEWARPED_ENTITY', cardId };
-      }
-
-      return null;
+      const tagEvents = processTagChange(entityRef, tag, value);
+      return flushEvents.length > 0 ? [...flushEvents, ...tagEvents] : tagEvents;
     }
+
   } catch {
     // Never crash on a bad line
   }
 
-  return null;
+  return [];
 }

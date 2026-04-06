@@ -1,8 +1,9 @@
 import { useMemo } from 'react';
-import type { BgCard } from '../../data/types';
+import type { BgCard, BoardMinion, BoardSnapshot } from '../../data/types';
 import { artCropUrl } from '../Common/CardImage';
 import { TierStars } from '../Common/TierStars';
 import { getCardCache } from '../../data/cardSync';
+import { useGameStore } from '../../state/gameStore';
 
 interface HeroRowProps {
   hero: BgCard;
@@ -10,6 +11,11 @@ interface HeroRowProps {
 }
 
 export function HeroRow({ hero, onCardClick }: HeroRowProps) {
+  const heroplacements = useGameStore((s) => s.gameState.heroplacements);
+  const playerBoards = useGameStore((s) => s.gameState.playerBoards);
+  const placement = heroplacements[hero.id];
+  const snapshot = playerBoards[hero.id];
+
   const { heroPower, buddy } = useMemo(() => {
     const cache = getCardCache();
     let heroPower: BgCard | null = null;
@@ -24,9 +30,10 @@ export function HeroRow({ hero, onCardClick }: HeroRowProps) {
 
   return (
     <div className="hero-group">
-      <SubCard card={hero} label={null} onCardClick={onCardClick} />
+      <SubCard card={hero} label={null} onCardClick={onCardClick} placement={placement} />
       {heroPower && <SubCard card={heroPower} label="Hero Power" onCardClick={onCardClick} />}
       {buddy && <SubCard card={buddy} label="Buddy" onCardClick={onCardClick} showTier />}
+      {snapshot && snapshot.minions.length > 0 && <BoardRow snapshot={snapshot} />}
     </div>
   );
 }
@@ -36,9 +43,10 @@ interface SubCardProps {
   label: string | null;
   onCardClick: (card: BgCard) => void;
   showTier?: boolean;
+  placement?: number;
 }
 
-function SubCard({ card, label, onCardClick, showTier }: SubCardProps) {
+function SubCard({ card, label, onCardClick, showTier, placement }: SubCardProps) {
   return (
     <div
       className={`card-row${label ? ' card-row--sub' : ''}`}
@@ -48,8 +56,12 @@ function SubCard({ card, label, onCardClick, showTier }: SubCardProps) {
       onKeyDown={(e) => e.key === 'Enter' && onCardClick(card)}
       aria-label={card.name}
     >
-      {showTier && card.techLevel !== null && (
-        <TierStars tier={card.techLevel} className="card-row__tier-stars" />
+      {placement !== undefined ? (
+        <span className="card-row__placement">#{placement}</span>
+      ) : (
+        showTier && card.techLevel !== null && (
+          <TierStars tier={card.techLevel} className="card-row__tier-stars" />
+        )
       )}
 
       <div className="card-row__thumb">
@@ -83,5 +95,27 @@ function SubCard({ card, label, onCardClick, showTier }: SubCardProps) {
         {card.text && <p className="card-row__text">{card.text}</p>}
       </div>
     </div>
+  );
+}
+
+function BoardRow({ snapshot }: { snapshot: BoardSnapshot }) {
+  const cache = getCardCache();
+  const sorted = [...snapshot.minions].sort((a, b) => a.position - b.position);
+  return (
+    <div className="board-row">
+      <span className="board-row__turn">t{snapshot.turn}</span>
+      {sorted.map((m) => <MinionChip key={m.position} minion={m} cache={cache} />)}
+    </div>
+  );
+}
+
+function MinionChip({ minion, cache }: { minion: BoardMinion; cache: Map<string, BgCard> }) {
+  const name = cache.get(minion.cardId)?.name ?? minion.cardId;
+  const short = name.length > 9 ? name.slice(0, 9) + '…' : name;
+  return (
+    <span className="board-minion-chip">
+      <span className="board-minion-chip__name">{short}</span>
+      <span className="board-minion-chip__stats">{minion.attack}/{minion.health}</span>
+    </span>
   );
 }
