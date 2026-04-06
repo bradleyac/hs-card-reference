@@ -304,7 +304,15 @@ function processTagChange(entityRef: string, tag: string, value: string): LogEve
   }
 
   if (tag === 'BACON_CURRENT_COMBAT_PLAYER_ID') {
-    inCombat = value !== '0';
+    if (value === '0') {
+      inCombat = false;
+      // Eagerly drop the combat ghost mapping so that post-combat entity cleanup
+      // (opponent minions leaving PLAY after inCombat=false) never finds a heroCardId
+      // and therefore never erases the opponent's board snapshot.
+      controllerToHeroCardId.delete('14');
+    } else {
+      inCombat = true;
+    }
     return [];
   }
 
