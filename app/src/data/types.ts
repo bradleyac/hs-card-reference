@@ -55,6 +55,21 @@ export interface BgCard {
 
 // ─── Game state pushed by the watcher ─────────────────────────────────────────
 
+export interface BoardMinion {
+  cardId: string;
+  attack: number;
+  /** HEALTH tag value (max/buffed health, not current HP) */
+  health: number;
+  /** ZONE_POSITION, 1-indexed board slot */
+  position: number;
+}
+
+export interface BoardSnapshot {
+  minions: BoardMinion[];
+  /** NUM_TURNS_IN_PLAY value when this snapshot was last updated */
+  turn: number;
+}
+
 export interface GameState {
   mode: 'BATTLEGROUNDS' | 'OTHER' | 'UNKNOWN';
   phase: 'LOBBY' | 'IN_GAME' | 'ENDED';
@@ -68,6 +83,10 @@ export interface GameState {
   anomalyCardId: string | null;
   /** Card IDs of timewarped cards active this game */
   timewarpedCardIds: string[];
+  /** Current leaderboard placement for each hero: heroCardId → 1–8 */
+  heroplacements: Record<string, number>;
+  /** Last-known board snapshot for each hero: heroCardId → { minions, turn } */
+  playerBoards: Record<string, BoardSnapshot>;
 }
 
 export const EMPTY_GAME_STATE: GameState = {
@@ -78,6 +97,8 @@ export const EMPTY_GAME_STATE: GameState = {
   pendingConstraints: [],
   anomalyCardId: null,
   timewarpedCardIds: [],
+  heroplacements: {},
+  playerBoards: {},
 };
 
 // ─── Filter/UI state ──────────────────────────────────────────────────────────

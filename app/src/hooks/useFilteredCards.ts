@@ -57,12 +57,23 @@ export function useFilteredCards(cardsReady: boolean): BgCard[] {
       }
     }
 
-    // ── Sort: tier asc, then name ───────────────────────────────────────────
-    cards.sort((a, b) => {
-      const tierDiff = (a.techLevel ?? 99) - (b.techLevel ?? 99);
-      if (tierDiff !== 0) return tierDiff;
-      return a.name.localeCompare(b.name);
-    });
+    // ── Sort ────────────────────────────────────────────────────────────────
+    if (activePanel === 'HEROES') {
+      // Sort by leaderboard placement (1–8); unknown placement goes last
+      const placements = gameState.heroplacements;
+      cards.sort((a, b) => {
+        const pa = placements[a.id] ?? 9;
+        const pb = placements[b.id] ?? 9;
+        return pa !== pb ? pa - pb : a.name.localeCompare(b.name);
+      });
+    } else {
+      // Sort: tier asc, then name
+      cards.sort((a, b) => {
+        const tierDiff = (a.techLevel ?? 99) - (b.techLevel ?? 99);
+        if (tierDiff !== 0) return tierDiff;
+        return a.name.localeCompare(b.name);
+      });
+    }
 
     return cards;
   }, [gameState, activePanel, selectedRaces, selectedTiers, cardTypeFilter, searchQuery, cardsReady]);

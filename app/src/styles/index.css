@@ -390,6 +390,62 @@ button {
   border-bottom: none;
 }
 
+/* Placement badge (#1–#8) in the tier-stars slot on the hero's card row */
+.card-row__placement {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent);
+  width: 24px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+/* Board minion chip row shown under the buddy */
+.board-row {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  overflow-x: auto;
+  gap: 4px;
+  padding: 4px 8px 6px;
+  background: var(--bg-0);
+  scrollbar-width: none;
+}
+
+.board-row::-webkit-scrollbar {
+  display: none;
+}
+
+.board-row__turn {
+  font-size: 9px;
+  color: var(--text-2);
+  flex-shrink: 0;
+  padding-right: 2px;
+}
+
+.board-minion-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.board-minion-chip__name {
+  font-size: 10px;
+  color: var(--text-1);
+}
+
+.board-minion-chip__stats {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--accent);
+}
+
 .card-row--sub {
   background: var(--bg-0);
   padding-left: 16px;

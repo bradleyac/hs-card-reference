@@ -57,8 +57,9 @@ function expect(label: string, actual: unknown, expected: unknown) {
 }
 
 console.log('\n── Line Parser ─────────────────────────────────────────────────────');
-expect('CREATE_GAME', parseLine(SAMPLE_LINES[0])?.type, 'GAME_START');
-expect('non-power line returns null', parseLine(SAMPLE_LINES[15]), null);
+// parseLine now returns LogEvent[] — check the first event type
+expect('CREATE_GAME', parseLine(SAMPLE_LINES[0])[0]?.type, 'GAME_START');
+expect('non-power line returns empty array', parseLine(SAMPLE_LINES[15]).length, 0);
 
 console.log('\n── Game State Manager ──────────────────────────────────────────────');
 
@@ -66,8 +67,9 @@ const states: import('./types').GameState[] = [];
 const manager = new GameStateManager((s) => states.push({ ...s }));
 
 for (const line of SAMPLE_LINES) {
-  const event = parseLine(line);
-  if (event) manager.handleEvent(event);
+  for (const event of parseLine(line)) {
+    manager.handleEvent(event);
+  }
 }
 
 const final = states[states.length - 1];
@@ -96,8 +98,7 @@ console.log('\n── Single-tribe pool minion → AVAILABLE_RACES ────�
 
   const events: import('./logParser').LogEvent[] = [];
   for (const line of lines) {
-    const e = parseLine(line);
-    if (e) events.push(e);
+    for (const e of parseLine(line)) events.push(e);
   }
 
   const raceEvent = events.find(e => e.type === 'AVAILABLE_RACES');
@@ -119,8 +120,7 @@ console.log('\n── Dual-tribe pool minion → RACE_CONSTRAINT ─────
 
   const events: import('./logParser').LogEvent[] = [];
   for (const line of lines) {
-    const e = parseLine(line);
-    if (e) events.push(e);
+    for (const e of parseLine(line)) events.push(e);
   }
 
   const constraintEvent = events.find(e => e.type === 'RACE_CONSTRAINT');

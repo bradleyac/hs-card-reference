@@ -110,8 +110,7 @@ export function startWatching(onEvent: (event: LogEvent) => void): void {
       for (const line of lines) {
         if (!line.trim()) continue;
         try {
-          const event = parseLine(line);
-          if (event) onEvent(event);
+          for (const event of parseLine(line)) onEvent(event);
         } catch {
           // Ignore malformed lines
         }
@@ -146,8 +145,7 @@ export function startWatching(onEvent: (event: LogEvent) => void): void {
       const line = lines[i];
       if (!line.trim()) continue;
       try {
-        const event = parseLine(line);
-        if (event) onEvent(event);
+        for (const event of parseLine(line)) onEvent(event);
       } catch {
         // ignore
       }
