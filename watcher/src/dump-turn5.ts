@@ -6,7 +6,7 @@ import { GameStateManager } from './gameStateManager';
 import { parseLine } from './logParser';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const logPath = path.resolve(__dirname, '../../docs/samples/Power.log.gz');
+const logPath = path.resolve(__dirname, '../../docs/samples/Power.log.2.gz');
 const raw = zlib.gunzipSync(fs.readFileSync(logPath)).toString('utf8');
 const lines = raw.split('\n');
 
@@ -18,8 +18,8 @@ for (const line of lines) {
   lineNo++;
   const turnMatch = /GameState\.DebugPrintPower\(\) -\s+TAG_CHANGE Entity=GameEntity tag=NUM_TURNS_IN_PLAY value=(\d+)/.exec(line);
   // NUM_TURNS_IN_PLAY increments twice per actual turn (tavern + combat).
-  // Stop after actual turn 5 (raw value > 10).
-  if (turnMatch && parseInt(turnMatch[1], 10) > 10) break;
+  // Stop after actual turn 15 (raw value > 30).
+  if (turnMatch && parseInt(turnMatch[1], 10) > 30) break;
 
   for (const event of parseLine(line)) {
     manager.handleEvent(event);

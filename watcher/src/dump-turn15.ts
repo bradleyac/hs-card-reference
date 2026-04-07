@@ -6,7 +6,7 @@ import { GameStateManager } from './gameStateManager';
 import { parseLine } from './logParser';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const logPath = path.resolve(__dirname, '../../docs/samples/Power.log.gz');
+const logPath = path.resolve(__dirname, '../../docs/samples/Power.log.2.gz');
 const raw = zlib.gunzipSync(fs.readFileSync(logPath)).toString('utf8');
 const lines = raw.split('\n');
 

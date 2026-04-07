@@ -161,8 +161,8 @@ function heroCardIdForEntry(entry: BoardEntry): string | null {
 }
 
 function snapshotToMinions(snapshot: Map<string, BoardEntry>): BoardMinion[] {
-  return Array.from(snapshot.values())
-    .filter((e) => e.zone === 'PLAY')
+  let uniquePositionedMinions = new Map(Array.from(snapshot.values()).filter((e) => e.zone === 'PLAY').map(e => [e.zonePos, e]));
+  return Array.from(uniquePositionedMinions.values())
     .sort((a, b) => a.zonePos - b.zonePos)
     .map((e) => ({ cardId: e.cardId, attack: e.atk, health: e.health, position: e.zonePos }));
 }
@@ -635,7 +635,8 @@ export function parseLine(line: string): LogEvent[] {
       return flushEvents.length > 0 ? [...flushEvents, ...tagEvents] : tagEvents;
     }
 
-  } catch {
+  } catch (e) {
+    console.log(e);
     // Never crash on a bad line
   }
 

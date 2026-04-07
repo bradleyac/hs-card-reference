@@ -117,6 +117,10 @@ export function startWatching(onEvent: (event: LogEvent) => void): void {
       }
     });
 
+    stream.on('error', (err) => {
+      console.error('[watcher] Error reading log:', err.message);
+    });
+
     stream.on('end', () => {
       fileSize = stat.size;
     });
@@ -162,7 +166,8 @@ export function startWatching(onEvent: (event: LogEvent) => void): void {
 
     fileWatcher = chokidar.watch(logPath, {
       persistent: true,
-      usePolling: false,
+      usePolling: true,
+      interval: 500,
       ignoreInitial: true,
       awaitWriteFinish: false,
     });
