@@ -6,7 +6,8 @@
  * - In CREATE_GAME there are only 2 Player blocks: the local player + Bob (BACON_DUMMY_PLAYER)
  * - Hero-choice FULL_ENTITY blocks appear with CONTROLLER=<local player ID>;
  *   the HERO_ENTITY tag in the Player block points to the placeholder (TB_BaconShop_HERO_PH)
- * - Bug B fix: we build controllerToHeroCardId from the ZONE=PLAY TAG_CHANGE on the hero entity
+ * - Opponent identity: BACON_CURRENT_COMBAT_PLAYER_ID fires with the opponent's BG slot,
+ *   which maps via bgSlotToHeroCardId to their heroCardId (currentOpponentHeroCardId)
  * - Bug A fix: PLAYER_LEADERBOARD_PLACE in a FULL_ENTITY block is captured as the initial placement
  * - FULL_ENTITY block tags are indented; any non-indented line (top-level TAG_CHANGE, etc.)
  *   terminates the current open entity block and triggers a flush
@@ -51,16 +52,16 @@ function extractCardId(ref: string): string {
 
 // ── BACON_SUBSET_* → race string ─────────────────────────────────────────────
 const BACON_SUBSET_TO_RACE: Record<string, string> = {
-  BEAST:      'BEAST',
-  DEMON:      'DEMON',
-  DRAGON:     'DRAGON',
+  BEAST: 'BEAST',
+  DEMON: 'DEMON',
+  DRAGON: 'DRAGON',
   ELEMENTALS: 'ELEMENTAL',
-  MECH:       'MECHANICAL',
-  MURLOC:     'MURLOC',
-  NAGA:       'NAGA',
-  PIRATE:     'PIRATE',
-  QUILLBOAR:  'QUILBOAR',
-  UNDEAD:     'UNDEAD',
+  MECH: 'MECHANICAL',
+  MURLOC: 'MURLOC',
+  NAGA: 'NAGA',
+  PIRATE: 'PIRATE',
+  QUILLBOAR: 'QUILBOAR',
+  UNDEAD: 'UNDEAD',
 };
 
 const PLACEHOLDER_HERO_ID = 'TB_BaconShop_HERO_PH';
@@ -74,7 +75,7 @@ function isBgHeroCardId(cardId: string): boolean {
   // while accepting BG24_HERO_204 (end-of-string), BG24_HERO_204_SKIN_E (_ is [^a-z0-9]),
   // TB_BaconShop_HERO_43_SKIN_G, TB_BaconShop_HERO_93, etc.
   return /^BG\d+_HERO_\d+(?=$|[^a-z0-9])/.test(cardId) ||
-         /^TB_BaconShop_HERO_\d+(?=$|[^a-z0-9])/.test(cardId);
+    /^TB_BaconShop_HERO_\d+(?=$|[^a-z0-9])/.test(cardId);
 }
 
 // ── Parser state (reset on CREATE_GAME) ──────────────────────────────────────
@@ -103,13 +104,17 @@ let currentEntityCopiedFrom = '';       // COPIED_FROM_ENTITY_ID from block tags
 // Player block state (CREATE_GAME only)
 let inPlayerBlock = false;
 let currentPlayerId = '';
-let bobPlayerId = '';
+let firstPlayerBlockId = '';  // ID of the first Player block seen; used to derive localPlayerBgSlot
+/** Controller ID of the opponent slot (always the local player's controller + 8 in practice) */
+let opponentController = '';
 
-// ── Hero → controller mapping (Bug B fix) ────────────────────────────────────
-/** controller value → heroCardId for heroes in ZONE=PLAY */
-const controllerToHeroCardId = new Map<string, string>();
+// ── Hero → opponent mapping ───────────────────────────────────────────────────
 /** BG slot (PLAYER_ID tag) → heroCardId */
 const bgSlotToHeroCardId = new Map<string, string>();
+/** BG slot of the local player — used to skip their BACON_CURRENT_COMBAT_PLAYER_ID firing */
+let localPlayerBgSlot = '';
+/** heroCardId of whoever is currently fighting the local player (controller 14) */
+let currentOpponentHeroCardId = '';
 
 // ── Board state ───────────────────────────────────────────────────────────────
 interface BoardEntry {
@@ -141,15 +146,18 @@ const copiedFromMap = new Map<string, string>();
 // ── Phase tracking ────────────────────────────────────────────────────────────
 let inCombat = false;
 let currentTurn = 0;
+/**
+ * Tracks which opponent heroCardIds have had their snapshot cleared (and started
+ * fresh) during the current combat. Reset each time a new combat begins.
+ * Ensures stale data from a prior encounter is evicted before the first new entry.
+ */
+const combatFreshenedHeroes = new Set<string>();
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function heroCardIdForEntry(entry: BoardEntry): string | null {
-  const byController = controllerToHeroCardId.get(entry.controller);
-  if (byController) return byController;
-  const slot = entry.bgSlot;
-  if (slot) return bgSlotToHeroCardId.get(slot) ?? null;
-  return null;
+  if (entry.controller !== opponentController) return null;
+  return currentOpponentHeroCardId || null;
 }
 
 function snapshotToMinions(snapshot: Map<string, BoardEntry>): BoardMinion[] {
@@ -211,17 +219,10 @@ function flushCurrentEntity(): LogEvent[] {
   if (!currentEntityId && !currentEntityIsHero) return [];
   const events: LogEvent[] = [];
 
-  // Hero mappings (Bug B fix)
+  // Hero BG-slot mapping
   if (isBgHeroCardId(currentCardId)) {
-    if (currentEntityBgSlot) bgSlotToHeroCardId.set(currentEntityBgSlot, currentCardId);
-    if (currentEntityZone === 'PLAY' && currentEntityController) {
-      // When the opponent's combat copy hero enters PLAY (controller=14), clear any stale
-      // snapshot entries from the previous combat against this same opponent before
-      // establishing the new controller→hero mapping.
-      if (currentEntityController === '14' && boardSnapshots.has(currentCardId)) {
-        boardSnapshots.get(currentCardId)!.clear();
-      }
-      controllerToHeroCardId.set(currentEntityController, currentCardId);
+    if (currentEntityBgSlot) {
+      bgSlotToHeroCardId.set(currentEntityBgSlot, currentCardId);
     }
   }
 
@@ -264,20 +265,30 @@ function flushCurrentEntity(): LogEvent[] {
 
     if (currentEntityZone === 'PLAY' && currentEntityController !== '') {
       entry.zone = 'PLAY';
-      // Evict the reset source before adding the copy so the snapshot stays clean.
-      if (currentEntityCopiedFrom) evictCopySource(currentEntityCopiedFrom);
       boardEntities.set(currentEntityId, entry);
 
-      const heroCardId = heroCardIdForEntry(entry);
-      if (heroCardId) {
-        if (!boardSnapshots.has(heroCardId)) boardSnapshots.set(heroCardId, new Map());
-        boardSnapshots.get(heroCardId)!.set(currentEntityId, { ...entry });
-        events.push({
-          type: 'PLAYER_BOARD',
-          heroCardId,
-          minions: snapshotToMinions(boardSnapshots.get(heroCardId)!),
-          turn: currentTurn,
-        });
+      // Only opponent combat copies (opponent controller, during combat) are tracked in
+      // boardSnapshots. Everything outside combat — including the local player's own
+      // board — is either directly visible to the player or irrelevant.
+      if (inCombat && currentEntityController === opponentController) {
+        const heroCardId = heroCardIdForEntry(entry);
+        if (heroCardId) {
+          if (!boardSnapshots.has(heroCardId)) boardSnapshots.set(heroCardId, new Map());
+          const snap = boardSnapshots.get(heroCardId)!;
+          // On the first entry for this opponent in this combat, clear any stale data
+          // from a prior encounter so we start fresh.
+          if (!combatFreshenedHeroes.has(heroCardId)) {
+            snap.clear();
+            combatFreshenedHeroes.add(heroCardId);
+          }
+          snap.set(currentEntityId, { ...entry });
+          events.push({
+            type: 'PLAYER_BOARD',
+            heroCardId,
+            minions: snapshotToMinions(snap),
+            turn: currentTurn,
+          });
+        }
       }
     }
   }
@@ -308,14 +319,17 @@ function resetState(): void {
   resetEntityAccumulators();
   inPlayerBlock = false;
   currentPlayerId = '';
-  bobPlayerId = '';
-  controllerToHeroCardId.clear();
+  firstPlayerBlockId = '';
+  opponentController = '';
   bgSlotToHeroCardId.clear();
+  localPlayerBgSlot = '';
+  currentOpponentHeroCardId = '';
   boardEntities.clear();
   boardSnapshots.clear();
   entityRegistry.clear();
   copiedFromMap.clear();
   inCombat = false;
+  combatFreshenedHeroes.clear();
   currentTurn = 0;
 }
 
@@ -329,7 +343,7 @@ function processTagChange(entityRef: string, tag: string, value: string): LogEve
     (gameEntityId !== '' && entityId === gameEntityId);
   if (isGameEntity) {
     if (tag === 'NEXT_STEP' && value === 'FINAL_GAMEOVER') return [{ type: 'GAME_PHASE', phase: 'ENDED' }];
-    if (tag === 'NEXT_STEP' && value === 'MAIN_ACTION')    return [{ type: 'GAME_PHASE', phase: 'IN_GAME' }];
+    if (tag === 'NEXT_STEP' && value === 'MAIN_ACTION') return [{ type: 'GAME_PHASE', phase: 'IN_GAME' }];
     // NUM_TURNS_IN_PLAY increments once per phase (tavern + combat = 2 per actual turn),
     // so floor-divide by 2 to get the player-visible turn number.
     if (tag === 'NUM_TURNS_IN_PLAY') { currentTurn = Math.floor(parseInt(value, 10) / 2); return []; }
@@ -338,12 +352,13 @@ function processTagChange(entityRef: string, tag: string, value: string): LogEve
   if (tag === 'BACON_CURRENT_COMBAT_PLAYER_ID') {
     if (value === '0') {
       inCombat = false;
-      // Eagerly drop the combat ghost mapping so that post-combat entity cleanup
-      // (opponent minions leaving PLAY after inCombat=false) never finds a heroCardId
-      // and therefore never erases the opponent's board snapshot.
-      controllerToHeroCardId.delete('14');
+      currentOpponentHeroCardId = '';
     } else {
       inCombat = true;
+      if (value !== localPlayerBgSlot) {
+        currentOpponentHeroCardId = bgSlotToHeroCardId.get(value) ?? '';
+        combatFreshenedHeroes.clear();
+      }
     }
     return [];
   }
@@ -368,18 +383,11 @@ function processTagChange(entityRef: string, tag: string, value: string): LogEve
     if (cardId) return [{ type: 'TIMEWARPED_ENTITY', cardId }];
   }
 
-  // Hero ZONE transitions → update controllerToHeroCardId (Bug B)
+  // Hero ZONE transitions — heroes moving in/out of PLAY don't affect snapshot tracking;
+  // the current opponent is determined solely by BACON_CURRENT_COMBAT_PLAYER_ID.
   if (tag === 'ZONE' && entityId) {
     const cardId = extractCardId(entityRef);
     if (cardId && isBgHeroCardId(cardId)) {
-      if (value === 'PLAY') {
-        const m = /\bplayer=(\d+)\b/.exec(entityRef);
-        if (m) controllerToHeroCardId.set(m[1], cardId);
-      } else {
-        for (const [ctrl, hId] of controllerToHeroCardId) {
-          if (hId === cardId) { controllerToHeroCardId.delete(ctrl); break; }
-        }
-      }
       return [];
     }
 
@@ -398,11 +406,18 @@ function processTagChange(entityRef: string, tag: string, value: string): LogEve
         const sourceId = copiedFromMap.get(entityId);
         if (sourceId) evictCopySource(sourceId);
         boardEntities.set(entityId, entry);
-        const heroCardId = heroCardIdForEntry(entry);
-        if (heroCardId) {
-          if (!boardSnapshots.has(heroCardId)) boardSnapshots.set(heroCardId, new Map());
-          boardSnapshots.get(heroCardId)!.set(entityId, { ...entry });
-          return [{ type: 'PLAYER_BOARD', heroCardId, minions: snapshotToMinions(boardSnapshots.get(heroCardId)!), turn: currentTurn }];
+        if (inCombat && entry.controller === opponentController) {
+          const heroCardId = heroCardIdForEntry(entry);
+          if (heroCardId) {
+            if (!boardSnapshots.has(heroCardId)) boardSnapshots.set(heroCardId, new Map());
+            const snap = boardSnapshots.get(heroCardId)!;
+            if (!combatFreshenedHeroes.has(heroCardId)) {
+              snap.clear();
+              combatFreshenedHeroes.add(heroCardId);
+            }
+            snap.set(entityId, { ...entry });
+            return [{ type: 'PLAYER_BOARD', heroCardId, minions: snapshotToMinions(snap), turn: currentTurn }];
+          }
         }
       }
     }
@@ -456,7 +471,7 @@ function processTagChange(entityRef: string, tag: string, value: string): LogEve
       // so the snapshot preserves the entity's last real board position.
       // All other position updates (including during combat for newly-spawned minions)
       // should be reflected in the snapshot.
-      if (inCombat && newPos === 0) return [];
+      if (inCombat) return [];
       const heroCardId = heroCardIdForEntry(entry);
       if (heroCardId && boardSnapshots.has(heroCardId)) {
         const snap = boardSnapshots.get(heroCardId)!;
@@ -518,6 +533,11 @@ export function parseLine(line: string): LogEvent[] {
     if (playerBlockMatch) {
       inPlayerBlock = true;
       currentPlayerId = playerBlockMatch[2];
+      if (!firstPlayerBlockId) firstPlayerBlockId = currentPlayerId;
+      // If Bob was already identified (his block came first), this must be the local player
+      if (opponentController !== '' && currentPlayerId !== opponentController) {
+        localPlayerBgSlot = currentPlayerId;
+      }
       return [];
     }
 
@@ -548,7 +568,15 @@ export function parseLine(line: string): LogEvent[] {
       const [, tagName, tagValue] = blockTagMatch;
 
       if (inPlayerBlock) {
-        if (tagName === 'BACON_DUMMY_PLAYER' && tagValue === '1') bobPlayerId = currentPlayerId;
+        if (tagName === 'BACON_DUMMY_PLAYER' && tagValue === '1') {
+          opponentController = currentPlayerId;
+          // The local player's BG slot equals their PlayerID from the Player block.
+          // That's whichever block ID we've seen so far that isn't Bob's.
+          if (firstPlayerBlockId && firstPlayerBlockId !== currentPlayerId) {
+            localPlayerBgSlot = firstPlayerBlockId;
+          }
+          // If Bob's block came first, localPlayerBgSlot is set in the Player block handler below.
+        }
         return [];
       }
 
@@ -561,14 +589,14 @@ export function parseLine(line: string): LogEvent[] {
       // Tags on the current FULL_ENTITY
       if (currentEntityId) {
         switch (tagName) {
-          case 'CONTROLLER':              currentEntityController = tagValue; break;
-          case 'ZONE':                    currentEntityZone = tagValue; break;
-          case 'CARDTYPE':                currentEntityCardType = tagValue; break;
-          case 'ATK':                     currentEntityAtk = parseInt(tagValue, 10); break;
-          case 'HEALTH':                  currentEntityHealth = parseInt(tagValue, 10); break;
-          case 'ZONE_POSITION':           currentEntityZonePos = parseInt(tagValue, 10); break;
-          case 'PLAYER_ID':               currentEntityBgSlot = tagValue; break;
-          case 'COPIED_FROM_ENTITY_ID':   currentEntityCopiedFrom = tagValue; break;
+          case 'CONTROLLER': currentEntityController = tagValue; break;
+          case 'ZONE': currentEntityZone = tagValue; break;
+          case 'CARDTYPE': currentEntityCardType = tagValue; break;
+          case 'ATK': currentEntityAtk = parseInt(tagValue, 10); break;
+          case 'HEALTH': currentEntityHealth = parseInt(tagValue, 10); break;
+          case 'ZONE_POSITION': currentEntityZonePos = parseInt(tagValue, 10); break;
+          case 'PLAYER_ID': currentEntityBgSlot = tagValue; break;
+          case 'COPIED_FROM_ENTITY_ID': currentEntityCopiedFrom = tagValue; break;
           // Bug A fix: PLAYER_LEADERBOARD_PLACE is the signal that this entity is an
           // in-game hero (not merely a draft choice shown to the player). Capture the
           // initial placement and mark it as a real hero.
