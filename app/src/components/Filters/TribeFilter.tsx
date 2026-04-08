@@ -1,6 +1,6 @@
+import { getCardCache } from '../../data/cardSync';
 import { useFilterStore } from '../../state/filterStore';
 import { useGameStore } from '../../state/gameStore';
-import { getCardCache } from '../../data/cardSync';
 
 // Tribe display names and colors
 const TRIBE_META: Record<string, { label: string; color: string }> = {

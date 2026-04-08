@@ -1,18 +1,18 @@
-import { filterAndProjectCards, type RawCard } from './cardFilter';
 import {
   getAllCards,
   getStoredBuildNumber,
+  getStoredFilterVersion,
   storeBuildNumber,
   storeCards,
-  getStoredFilterVersion,
   storeFilterVersion,
 } from './cardDb';
+import { filterAndProjectCards, type RawCard } from './cardFilter';
+import type { BgCard } from './types';
 
 // Bump this string whenever cardFilter.ts changes in a way that alters which
 // cards are included — forces a re-index even if the HearthstoneJSON build
 // number hasn't changed.
-const FILTER_VERSION = '11';
-import type { BgCard } from './types';
+const FILTER_VERSION = '13';
 
 const INDEX_URL = 'https://api.hearthstonejson.com/v1/latest/';
 

@@ -1,14 +1,16 @@
 import { useMemo } from 'react';
-import type { BgCard, PanelId } from '../data/types';
-import { searchCards } from '../data/search';
-import { useGameStore } from '../state/gameStore';
-import { useFilterStore } from '../state/filterStore';
 import { getCardCache } from '../data/cardSync';
+import { searchCards } from '../data/search';
+import type { BgCard, PanelId } from '../data/types';
+import { useFilterStore } from '../state/filterStore';
+import { useGameStore } from '../state/gameStore';
+
+const APPLY_GOLDEN_FILTER_PANELS: PanelId[] = ['TAVERN', 'BUDDIES', 'TIMEWARPED'];
 
 /** Cards for the current panel, filtered by game context + user filters + search */
 export function useFilteredCards(cardsReady: boolean): BgCard[] {
   const gameState = useGameStore((s) => s.gameState);
-  const { activePanel, selectedRaces, selectedTiers, searchQuery, cardTypeFilter } = useFilterStore();
+  const { activePanel, selectedRaces, selectedTiers, searchQuery, cardTypeFilter, plainOrGolden } = useFilterStore();
 
   return useMemo(() => {
     if (!cardsReady) return [];
@@ -18,6 +20,8 @@ export function useFilteredCards(cardsReady: boolean): BgCard[] {
     } catch {
       return [];
     }
+
+    cards = cards.filter((c) => !APPLY_GOLDEN_FILTER_PANELS.includes(activePanel) || plainOrGolden === 'plain' ? !c.golden : c.golden);
 
     // ── Panel / category filter ─────────────────────────────────────────────
     cards = cards.filter((c) => categoryMatchesPanel(c, activePanel));
@@ -76,7 +80,7 @@ export function useFilteredCards(cardsReady: boolean): BgCard[] {
     }
 
     return cards;
-  }, [gameState, activePanel, selectedRaces, selectedTiers, cardTypeFilter, searchQuery, cardsReady]);
+  }, [gameState, activePanel, selectedRaces, selectedTiers, cardTypeFilter, searchQuery, plainOrGolden, cardsReady]);
 }
 
 function categoryMatchesPanel(card: BgCard, panel: PanelId): boolean {

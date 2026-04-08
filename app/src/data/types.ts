@@ -38,6 +38,9 @@ export interface BgCard {
   /** Tribe(s), e.g. ["BEAST"] or ["MURLOC","BEAST"] for dual-type */
   races: string[];
 
+  /** Whether the card is golden */
+  golden: boolean;
+
   /** dbfId of this hero's hero power (set on HERO cards) */
   heroPowerDbfId: number | null;
   /** dbfId of this hero's buddy (set on HERO cards) */
@@ -119,6 +122,7 @@ export interface FilterState {
   selectedRaces: string[];
   /** Empty array = show all tiers */
   selectedTiers: number[];
+  plainOrGolden: 'plain' | 'golden';
   activePanel: PanelId;
   cardTypeFilter: CardTypeFilter;
 }

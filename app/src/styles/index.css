@@ -212,12 +212,14 @@ button {
 
 /* ─── Card type toggle ─────────────────────────────────────────────────────── */
 
+.plain-golden-toggle,
 .card-type-toggle {
   display: flex;
   gap: 3px;
   align-items: center;
 }
 
+.plain-golden-toggle-btn,
 .card-type-btn {
   font-size: 10px;
   padding: 2px 6px;
@@ -228,6 +230,7 @@ button {
   transition: background 0.1s, color 0.1s;
 }
 
+.plain-golden-toggle-btn--active,
 .card-type-btn--active {
   background: rgba(184, 144, 10, 0.2);
   border-color: #b8900a;
@@ -325,12 +328,25 @@ button {
   gap: 0;
 }
 
-.tier-stars[data-tier="5"] { gap: 0; }
+.tier-stars[data-tier="5"] {
+  gap: 0;
+}
 
-.tier-stars[data-tier="3"] .tier-stars__star { line-height: 0.9; }
-.tier-stars[data-tier="5"] .tier-stars__star { line-height: 0.78; }
-.tier-stars[data-tier="6"] .tier-stars__star { line-height: 0.9; }
-.tier-stars[data-tier="7"] .tier-stars__star { line-height: 0.9; }
+.tier-stars[data-tier="3"] .tier-stars__star {
+  line-height: 0.9;
+}
+
+.tier-stars[data-tier="5"] .tier-stars__star {
+  line-height: 0.78;
+}
+
+.tier-stars[data-tier="6"] .tier-stars__star {
+  line-height: 0.9;
+}
+
+.tier-stars[data-tier="7"] .tier-stars__star {
+  line-height: 0.9;
+}
 
 /* Row-specific sizing */
 .card-row__tier-stars {

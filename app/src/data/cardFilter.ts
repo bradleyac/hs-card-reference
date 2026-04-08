@@ -28,6 +28,8 @@ export interface RawCard {
   // Used to resolve hero powers → parent hero
   heroId?: string;
   battlegroundsAssociatedRaces?: string[];
+  battlegroundsNormalDbfId?: number;
+  battlegroundsPremiumDbfId?: number;
 }
 
 // User-facing search aliases for race strings that differ from the display name
@@ -106,7 +108,7 @@ const DUOS_ONLY_IDS = new Set(['BG31_242', 'BG31_243', 'BG31_244']);
  * Attempt to classify a raw card into a BG category.
  * Returns null if the card is not relevant to Battlegrounds.
  */
-function classifyCategory(raw: RawCard): BgCardCategory | null {
+function classifyCategory(raw: RawCard, bgPlainMinionIds: Set<number>): BgCardCategory | null {
   // Duos-exclusive cards are not part of the Solo pool
   if (raw.id.startsWith('BGDUO')) return null;
   if (DUOS_ONLY_IDS.has(raw.id)) return null;
@@ -118,7 +120,8 @@ function classifyCategory(raw: RawCard): BgCardCategory | null {
     return (raw.techLevel ?? 0) >= 4 ? 'TIMEWARPED_MAJOR' : 'TIMEWARPED_MINOR';
   }
 
-  if (raw.isBattlegroundsPoolMinion || raw.isBattlegroundsPoolSpell) return 'TAVERN_MINION';
+  if (bgPlainMinionIds.has(raw.dbfId) || (raw.battlegroundsNormalDbfId && bgPlainMinionIds.has(raw.battlegroundsNormalDbfId))) return 'TAVERN_MINION';
+  if (raw.isBattlegroundsPoolSpell) return 'TAVERN_MINION';
 
   const mechs = raw.mechanics ?? [];
   if (raw.battlegroundsHero) return 'HERO';
@@ -153,13 +156,19 @@ export function filterAndProjectCards(rawCards: RawCard[]): BgCard[] {
       bgHeroDbfIds.add(raw.dbfId);
     }
   }
+  const bgPlainMinionIds = new Set<number>();
+  for (const raw of rawCards) {
+    if (raw.isBattlegroundsPoolMinion) {
+      bgPlainMinionIds.add(raw.dbfId);
+    }
+  }
 
   const results: BgCard[] = [];
 
   for (const raw of rawCards) {
     if (!raw.id || !raw.name) continue;
 
-    let category = classifyCategory(raw);
+    let category = classifyCategory(raw, bgPlainMinionIds);
 
     // Hero powers: accept if linked hero is a BG hero
     if (
@@ -186,6 +195,7 @@ export function filterAndProjectCards(rawCards: RawCard[]): BgCard[] {
       cost: raw.cost ?? null,
       armor: raw.armor ?? null,
       races: getRaces(raw),
+      golden: !!raw.battlegroundsNormalDbfId,
       heroPowerDbfId: raw.heroPowerDbfId ?? null,
       buddyDbfId: raw.battlegroundsBuddyDbfId ?? null,
       associatedRaces: raw.battlegroundsAssociatedRaces ?? [],

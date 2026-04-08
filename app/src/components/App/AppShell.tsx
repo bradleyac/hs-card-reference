@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
-import { StatusBar } from '../Common/StatusBar';
-import { PanelNav } from '../Common/PanelNav';
-import { SearchBar } from '../Filters/SearchBar';
-import { TribeFilter } from '../Filters/TribeFilter';
-import { TierFilter } from '../Filters/TierFilter';
-import { CardTypeToggle } from '../Filters/CardTypeToggle';
-import { CardList } from '../CardList/CardList';
+import type { SyncStatus } from '../../data/cardSync';
 import { useFilteredCards } from '../../hooks/useFilteredCards';
 import { useFilterStore } from '../../state/filterStore';
-import type { SyncStatus } from '../../data/cardSync';
+import { CardList } from '../CardList/CardList';
+import { PanelNav } from '../Common/PanelNav';
+import { StatusBar } from '../Common/StatusBar';
+import { CardTypeToggle } from '../Filters/CardTypeToggle';
+import { PlainGoldenToggle } from '../Filters/PlainGoldenToggle';
+import { SearchBar } from '../Filters/SearchBar';
+import { TierFilter } from '../Filters/TierFilter';
+import { TribeFilter } from '../Filters/TribeFilter';
 
 interface AppShellProps {
   syncStatus: SyncStatus;
@@ -48,6 +49,7 @@ export function AppShell({ syncStatus }: AppShellProps) {
 
         {showFilters && (
           <div className="filter-row">
+            <PlainGoldenToggle />
             {showCardTypeToggle && <CardTypeToggle />}
             <TribeFilter />
             <TierFilter tiers={activePanel === 'TIMEWARPED' ? [3, 5] : undefined} />

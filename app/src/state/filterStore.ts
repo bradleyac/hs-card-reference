@@ -1,11 +1,12 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
+import { createJSONStorage, persist } from 'zustand/middleware';
 import type { CardTypeFilter, FilterState, PanelId } from '../data/types';
 
 interface FilterStore extends FilterState {
   setSearchQuery: (q: string) => void;
   toggleRace: (race: string) => void;
   toggleTier: (tier: number) => void;
+  setGolden: (isGolden: boolean) => void;
   setActivePanel: (panel: PanelId) => void;
   setCardTypeFilter: (f: CardTypeFilter) => void;
   clearFilters: () => void;
@@ -17,10 +18,15 @@ export const useFilterStore = create<FilterStore>()(
       searchQuery: '',
       selectedRaces: [],
       selectedTiers: [],
+      plainOrGolden: 'plain' as 'plain' | 'golden',
       activePanel: 'TAVERN' as PanelId,
       cardTypeFilter: 'ALL' as CardTypeFilter,
 
       setSearchQuery: (searchQuery) => set({ searchQuery }),
+
+      setGolden: (isGolden: boolean) => {
+        set({ plainOrGolden: isGolden ? 'golden' : 'plain' });
+      },
 
       toggleRace: (race) => {
         const { selectedRaces } = get();
