@@ -8,7 +8,7 @@ const PANELS: { id: PanelId; label: string; icon: string }[] = [
   { id: 'BUDDIES', label: 'Buddies', icon: '🤝' },
   { id: 'QUESTS', label: 'Quests', icon: '📜' },
   { id: 'ANOMALY', label: 'Anomaly', icon: '⚡' },
-  { id: 'TIMEWARPED', label: 'Time', icon: '⏳' },
+  // { id: 'TIMEWARPED', label: 'Time', icon: '⏳' },  // removed S10 — mechanic may return
 ];
 
 export function PanelNav() {
@@ -16,14 +16,12 @@ export function PanelNav() {
   const gameState = useGameStore((s) => s.gameState);
 
   const hasAnomaly = !!gameState.anomalyCardId;
-  const hasTimewarped = gameState.timewarpedCardIds.length > 0;
 
   return (
     <nav className="panel-nav" role="tablist">
       {PANELS.map(({ id, label, icon }) => {
         const inactive =
-          (id === 'ANOMALY' && !hasAnomaly) ||
-          (id === 'TIMEWARPED' && !hasTimewarped);
+          (id === 'ANOMALY' && !hasAnomaly);
 
         return (
           <button
