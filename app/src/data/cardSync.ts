@@ -12,7 +12,7 @@ import type { BgCard } from './types';
 // Bump this string whenever cardFilter.ts changes in a way that alters which
 // cards are included — forces a re-index even if the HearthstoneJSON build
 // number hasn't changed.
-const FILTER_VERSION = '13';
+const FILTER_VERSION = '16';
 
 const INDEX_URL = 'https://api.hearthstonejson.com/v1/latest/';
 

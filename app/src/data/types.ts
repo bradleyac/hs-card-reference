@@ -2,6 +2,7 @@
 
 export type BgCardCategory =
   | 'TAVERN_MINION'
+  | 'TAVERN_SPELL'
   | 'HERO'
   | 'HERO_POWER'
   | 'BUDDY'
@@ -9,7 +10,8 @@ export type BgCardCategory =
   | 'QUEST_REWARD'
   | 'ANOMALY'
   | 'TIMEWARPED_MAJOR'
-  | 'TIMEWARPED_MINOR';
+  | 'TIMEWARPED_MINOR'
+  | 'OTHER';
 
 // ─── Projected card stored in IndexedDB ───────────────────────────────────────
 

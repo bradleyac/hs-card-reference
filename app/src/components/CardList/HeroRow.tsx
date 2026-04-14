@@ -1,9 +1,9 @@
 import { useMemo } from 'react';
+import { getCardCache } from '../../data/cardSync';
 import type { BgCard, BoardMinion, BoardSnapshot } from '../../data/types';
+import { useGameStore } from '../../state/gameStore';
 import { artCropUrl } from '../Common/CardImage';
 import { TierStars } from '../Common/TierStars';
-import { getCardCache } from '../../data/cardSync';
-import { useGameStore } from '../../state/gameStore';
 
 interface HeroRowProps {
   hero: BgCard;
@@ -111,11 +111,17 @@ function BoardRow({ snapshot }: { snapshot: BoardSnapshot }) {
 
 function MinionChip({ minion, cache }: { minion: BoardMinion; cache: Map<string, BgCard> }) {
   const name = cache.get(minion.cardId)?.name ?? minion.cardId;
-  const short = name.length > 9 ? name.slice(0, 9) + '…' : name;
   return (
-    <span className="board-minion-chip">
-      <span className="board-minion-chip__name">{short}</span>
+    <div className="board-minion-chip" title={name}>
+      <span className="board-minion-chip__name">{name}</span>
+      <div className="board-minion-chip__thumb">
+        <img
+          src={artCropUrl(minion.cardId)}
+          title={name}
+          onError={(e) => { (e.target as HTMLImageElement).parentElement!.style.display = 'none'; }}
+        />
+      </div>
       <span className="board-minion-chip__stats">{minion.attack}/{minion.health}</span>
-    </span>
+    </div>
   );
 }

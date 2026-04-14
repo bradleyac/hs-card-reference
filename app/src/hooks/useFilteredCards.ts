@@ -85,7 +85,7 @@ export function useFilteredCards(cardsReady: boolean): BgCard[] {
 
 function categoryMatchesPanel(card: BgCard, panel: PanelId): boolean {
   switch (panel) {
-    case 'TAVERN': return card.category === 'TAVERN_MINION';
+    case 'TAVERN': return card.category === 'TAVERN_MINION' || card.category === 'TAVERN_SPELL';
     case 'HEROES': return card.category === 'HERO';
     case 'BUDDIES': return card.category === 'BUDDY';
     case 'QUESTS': return card.category === 'QUEST' || card.category === 'QUEST_REWARD';

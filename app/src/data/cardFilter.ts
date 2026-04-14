@@ -114,14 +114,13 @@ function classifyCategory(raw: RawCard, bgPlainMinionIds: Set<number>): BgCardCa
   if (DUOS_ONLY_IDS.has(raw.id)) return null;
 
   // Timewarped cards are flagged with battlegroundsTimewarpCard in the card data
-  // (not via mechanics). Only include base minions — exclude golden variants (_G
-  // suffix) and non-minion types (spells, treasures).
-  if (raw.battlegroundsTimewarpCard && !raw.id.endsWith('_G')) {
+  // (not via mechanics).
+  if (raw.battlegroundsTimewarpCard) {
     return (raw.techLevel ?? 0) >= 4 ? 'TIMEWARPED_MAJOR' : 'TIMEWARPED_MINOR';
   }
 
   if (bgPlainMinionIds.has(raw.dbfId) || (raw.battlegroundsNormalDbfId && bgPlainMinionIds.has(raw.battlegroundsNormalDbfId))) return 'TAVERN_MINION';
-  if (raw.isBattlegroundsPoolSpell) return 'TAVERN_MINION';
+  if (raw.isBattlegroundsPoolSpell) return 'TAVERN_SPELL';
 
   const mechs = raw.mechanics ?? [];
   if (raw.battlegroundsHero) return 'HERO';
@@ -138,7 +137,7 @@ function classifyCategory(raw: RawCard, bgPlainMinionIds: Set<number>): BgCardCa
   if (mechs.includes('QUEST')) return 'QUEST';
   if (mechs.includes('QUESTLINE_PART')) return 'QUEST_REWARD';
 
-  return null;
+  return 'OTHER';
 }
 
 /**
