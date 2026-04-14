@@ -8,6 +8,7 @@ const PANELS: { id: PanelId; label: string; icon: string }[] = [
   { id: 'BUDDIES', label: 'Buddies', icon: '🤝' },
   { id: 'QUESTS', label: 'Quests', icon: '📜' },
   { id: 'ANOMALY', label: 'Anomaly', icon: '⚡' },
+  { id: 'TRINKETS', label: 'Trinkets', icon: '💎' },
   // { id: 'TIMEWARPED', label: 'Time', icon: '⏳' },  // removed S10 — mechanic may return
 ];
 

@@ -1,16 +1,16 @@
 import { useMemo } from 'react';
 import { getCardCache } from '../data/cardSync';
 import { searchCards } from '../data/search';
-import type { BgCard, PanelId } from '../data/types';
+import type { BgCard, PanelId, TrinketTier } from '../data/types';
 import { useFilterStore } from '../state/filterStore';
 import { useGameStore } from '../state/gameStore';
 
-const APPLY_GOLDEN_FILTER_PANELS: PanelId[] = ['TAVERN', 'BUDDIES', 'TIMEWARPED'];
+const APPLY_GOLDEN_FILTER_PANELS: PanelId[] = ['TAVERN', 'BUDDIES', 'TIMEWARPED', 'TRINKETS'];
 
 /** Cards for the current panel, filtered by game context + user filters + search */
 export function useFilteredCards(cardsReady: boolean): BgCard[] {
   const gameState = useGameStore((s) => s.gameState);
-  const { activePanel, selectedRaces, selectedTiers, searchQuery, cardTypeFilter, plainOrGolden } = useFilterStore();
+  const { activePanel, selectedRaces, selectedTiers, searchQuery, cardTypeFilter, plainOrGolden, trinketTier } = useFilterStore();
 
   return useMemo(() => {
     if (!cardsReady) return [];
@@ -24,7 +24,7 @@ export function useFilteredCards(cardsReady: boolean): BgCard[] {
     cards = cards.filter((c) => !APPLY_GOLDEN_FILTER_PANELS.includes(activePanel) || plainOrGolden === 'plain' ? !c.golden : c.golden);
 
     // ── Panel / category filter ─────────────────────────────────────────────
-    cards = cards.filter((c) => categoryMatchesPanel(c, activePanel));
+    cards = cards.filter((c) => categoryMatchesPanel(c, activePanel, trinketTier));
 
     // ── Game context filter ─────────────────────────────────────────────────
     cards = applyGameContextFilter(cards, activePanel, gameState);
@@ -80,10 +80,10 @@ export function useFilteredCards(cardsReady: boolean): BgCard[] {
     }
 
     return cards;
-  }, [gameState, activePanel, selectedRaces, selectedTiers, cardTypeFilter, searchQuery, plainOrGolden, cardsReady]);
+  }, [gameState, activePanel, selectedRaces, selectedTiers, cardTypeFilter, searchQuery, plainOrGolden, trinketTier, cardsReady]);
 }
 
-function categoryMatchesPanel(card: BgCard, panel: PanelId): boolean {
+function categoryMatchesPanel(card: BgCard, panel: PanelId, trinketTier: TrinketTier): boolean {
   switch (panel) {
     case 'TAVERN': return card.category === 'TAVERN_MINION' || card.category === 'TAVERN_SPELL';
     case 'HEROES': return card.category === 'HERO';
@@ -91,6 +91,9 @@ function categoryMatchesPanel(card: BgCard, panel: PanelId): boolean {
     case 'QUESTS': return card.category === 'QUEST' || card.category === 'QUEST_REWARD';
     case 'ANOMALY': return card.category === 'ANOMALY';
     case 'TIMEWARPED': return card.category === 'TIMEWARPED_MAJOR' || card.category === 'TIMEWARPED_MINOR';
+    case 'TRINKETS': return trinketTier === 'LESSER'
+      ? card.category === 'TRINKET_LESSER'
+      : card.category === 'TRINKET_GREATER';
   }
 }
 
@@ -159,6 +162,17 @@ function applyGameContextFilter(
           if (c.races.length > 0) return c.races.some((r) => activeRaces.has(r));
           if (c.associatedRaces.length > 0) return c.associatedRaces.some((r) => activeRaces.has(r));
           return true;
+        });
+      }
+      return cards;
+
+    case 'TRINKETS':
+      // Filter by active tribes using associatedRaces (trinkets are tribe-specific or neutral)
+      if (gameState.availableRaces.length > 0) {
+        const activeRaces = new Set(gameState.availableRaces);
+        return cards.filter((c) => {
+          if (c.associatedRaces.length === 0) return true; // neutral trinket
+          return c.associatedRaces.some((r) => activeRaces.has(r));
         });
       }
       return cards;

@@ -11,6 +11,8 @@ export type BgCardCategory =
   | 'ANOMALY'
   | 'TIMEWARPED_MAJOR'
   | 'TIMEWARPED_MINOR'
+  | 'TRINKET_LESSER'
+  | 'TRINKET_GREATER'
   | 'OTHER';
 
 // ─── Projected card stored in IndexedDB ───────────────────────────────────────
@@ -47,6 +49,8 @@ export interface BgCard {
   heroPowerDbfId: number | null;
   /** dbfId of this hero's buddy (set on HERO cards) */
   buddyDbfId: number | null;
+  /** dbfId of a related card to display beneath the row (set on some TRINKET cards) */
+  relatedCardDbfId: number | null;
   /** Race strings associated with this hero (set on HERO cards, empty otherwise) */
   associatedRaces: string[];
 
@@ -114,9 +118,11 @@ export type PanelId =
   | 'BUDDIES'
   | 'QUESTS'
   | 'ANOMALY'
-  | 'TIMEWARPED';
+  | 'TIMEWARPED'
+  | 'TRINKETS';
 
 export type CardTypeFilter = 'ALL' | 'MINION' | 'SPELL';
+export type TrinketTier = 'LESSER' | 'GREATER';
 
 export interface FilterState {
   searchQuery: string;
@@ -127,4 +133,6 @@ export interface FilterState {
   plainOrGolden: 'plain' | 'golden';
   activePanel: PanelId;
   cardTypeFilter: CardTypeFilter;
+  /** Which trinket tier to show in the TRINKETS panel */
+  trinketTier: TrinketTier;
 }

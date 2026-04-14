@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
-import type { CardTypeFilter, FilterState, PanelId } from '../data/types';
+import type { CardTypeFilter, FilterState, PanelId, TrinketTier } from '../data/types';
 
 interface FilterStore extends FilterState {
   setSearchQuery: (q: string) => void;
@@ -9,6 +9,7 @@ interface FilterStore extends FilterState {
   setGolden: (isGolden: boolean) => void;
   setActivePanel: (panel: PanelId) => void;
   setCardTypeFilter: (f: CardTypeFilter) => void;
+  setTrinketTier: (t: TrinketTier) => void;
   clearFilters: () => void;
 }
 
@@ -21,6 +22,7 @@ export const useFilterStore = create<FilterStore>()(
       plainOrGolden: 'plain' as 'plain' | 'golden',
       activePanel: 'TAVERN' as PanelId,
       cardTypeFilter: 'ALL' as CardTypeFilter,
+      trinketTier: 'LESSER' as TrinketTier,
 
       setSearchQuery: (searchQuery) => set({ searchQuery }),
 
@@ -50,6 +52,8 @@ export const useFilterStore = create<FilterStore>()(
 
       setCardTypeFilter: (cardTypeFilter) => set({ cardTypeFilter }),
 
+      setTrinketTier: (trinketTier) => set({ trinketTier }),
+
       clearFilters: () => set({ searchQuery: '', selectedRaces: [], selectedTiers: [], cardTypeFilter: 'ALL' }),
     }),
     {
@@ -61,6 +65,7 @@ export const useFilterStore = create<FilterStore>()(
         selectedRaces: state.selectedRaces,
         selectedTiers: state.selectedTiers,
         cardTypeFilter: state.cardTypeFilter,
+        trinketTier: state.trinketTier,
       }),
     }
   )

@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from 'react';
 import type { BgCard, PanelId } from '../../data/types';
 import { CardRow } from './CardRow';
 import { HeroRow } from './HeroRow';
+import { TavernRow } from './TavernRow';
+import { TrinketRow } from './TrinketRow';
 import { CardDetail } from './CardDetail';
 import { renderUrl, artCropUrl } from '../Common/CardImage';
 
@@ -69,6 +71,14 @@ export function CardList({ cards, height, panel }: CardListProps) {
         {panel === 'HEROES'
           ? cards.map((card) => (
               <HeroRow key={card.id} hero={card} onCardClick={setSelectedCard} />
+            ))
+          : panel === 'TRINKETS'
+          ? cards.map((card) => (
+              <TrinketRow key={card.id} trinket={card} onCardClick={setSelectedCard} />
+            ))
+          : panel === 'TAVERN'
+          ? cards.map((card) => (
+              <TavernRow key={card.id} card={card} onCardClick={setSelectedCard} />
             ))
           : cards.map((card) => (
               <CardRow key={card.id} card={card} onClick={setSelectedCard} />

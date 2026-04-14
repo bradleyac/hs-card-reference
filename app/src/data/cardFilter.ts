@@ -21,7 +21,9 @@ export interface RawCard {
   battlegroundsHero?: boolean;
   isBattlegroundsBuddy?: boolean;
   battlegroundsTimewarpCard?: number;
+  spellSchool?: string;
   // Cross-reference dbfIds
+  battlegroundsRelatedCard?: number;
   heroPowerDbfId?: number;
   battlegroundsBuddyDbfId?: number;
   battlegroundsSkinParentId?: number;
@@ -83,6 +85,8 @@ function extractKeywords(raw: RawCard, category: BgCardCategory): string[] {
   if (category === 'TIMEWARPED_MAJOR' || category === 'TIMEWARPED_MINOR') {
     kw.add('timewarped');
   }
+  if (category === 'TRINKET_LESSER') kw.add('trinket lesser');
+  if (category === 'TRINKET_GREATER') kw.add('trinket greater');
   if (category === 'QUEST') kw.add('quest');
   if (category === 'TAVERN_MINION' && raw.techLevel) {
     kw.add(`tier${raw.techLevel}`);
@@ -104,6 +108,9 @@ function stripHtml(text: string): string {
 // Duos-only spells that lack a BGDUO prefix but are not in the Solo pool
 const DUOS_ONLY_IDS = new Set(['BG31_242', 'BG31_243', 'BG31_244']);
 
+// Trinket countdown timer placeholders — displayed in-game as "shop opens in N turns"
+const TRINKET_PLACEHOLDER_IDS = new Set(['BG30_Trinket_1st', 'BG30_Trinket_2nd']);
+
 /**
  * Attempt to classify a raw card into a BG category.
  * Returns null if the card is not relevant to Battlegrounds.
@@ -117,6 +124,11 @@ function classifyCategory(raw: RawCard, bgPlainMinionIds: Set<number>): BgCardCa
   // (not via mechanics).
   if (raw.battlegroundsTimewarpCard) {
     return (raw.techLevel ?? 0) >= 4 ? 'TIMEWARPED_MAJOR' : 'TIMEWARPED_MINOR';
+  }
+
+  if (raw.type === 'BATTLEGROUND_TRINKET') {
+    if (TRINKET_PLACEHOLDER_IDS.has(raw.id)) return null;
+    return raw.spellSchool === 'GREATER_TRINKET' ? 'TRINKET_GREATER' : 'TRINKET_LESSER';
   }
 
   if (bgPlainMinionIds.has(raw.dbfId) || (raw.battlegroundsNormalDbfId && bgPlainMinionIds.has(raw.battlegroundsNormalDbfId))) return 'TAVERN_MINION';
@@ -146,7 +158,13 @@ function classifyCategory(raw: RawCard, bgPlainMinionIds: Set<number>): BgCardCa
  * then accept any HERO_POWER whose heroId is in that set.
  */
 export function filterAndProjectCards(rawCards: RawCard[]): BgCard[] {
-  // Pass 1: collect BG hero card IDs
+  // Pass 1: build a dbfId → name map for resolving card references in text
+  const dbfIdToName = new Map<number, string>();
+  for (const raw of rawCards) {
+    if (raw.dbfId && raw.name) dbfIdToName.set(raw.dbfId, raw.name);
+  }
+
+  // Pass 2: collect BG hero card IDs
   const bgHeroIds = new Set<string>();
   const bgHeroDbfIds = new Set<number>();
   for (const raw of rawCards) {
@@ -181,11 +199,17 @@ export function filterAndProjectCards(rawCards: RawCard[]): BgCard[] {
 
     if (category === null) continue;
 
+    let text = raw.text ? stripHtml(raw.text) : '';
+    if (raw.battlegroundsRelatedCard && text.includes("'0'")) {
+      const relatedName = dbfIdToName.get(raw.battlegroundsRelatedCard);
+      if (relatedName) text = text.replace("'0'", `'${relatedName}'`);
+    }
+
     const card: BgCard = {
       id: raw.id,
       dbfId: raw.dbfId,
       name: raw.name,
-      text: raw.text ? stripHtml(raw.text) : '',
+      text,
       category,
       cardType: raw.type ?? 'MINION',
       techLevel: raw.techLevel ?? null,
@@ -197,6 +221,7 @@ export function filterAndProjectCards(rawCards: RawCard[]): BgCard[] {
       golden: !!raw.battlegroundsNormalDbfId,
       heroPowerDbfId: raw.heroPowerDbfId ?? null,
       buddyDbfId: raw.battlegroundsBuddyDbfId ?? null,
+      relatedCardDbfId: raw.battlegroundsRelatedCard ?? null,
       associatedRaces: raw.battlegroundsAssociatedRaces ?? [],
       keywords: extractKeywords(raw, category),
     };

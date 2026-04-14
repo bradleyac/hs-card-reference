@@ -10,6 +10,7 @@ import { PlainGoldenToggle } from '../Filters/PlainGoldenToggle';
 import { SearchBar } from '../Filters/SearchBar';
 import { TierFilter } from '../Filters/TierFilter';
 import { TribeFilter } from '../Filters/TribeFilter';
+import { TrinketTierToggle } from '../Filters/TrinketTierToggle';
 
 interface AppShellProps {
   syncStatus: SyncStatus;
@@ -37,8 +38,9 @@ export function AppShell({ syncStatus }: AppShellProps) {
     return () => observer.disconnect();
   }, [activePanel]);
 
-  const showFilters = activePanel === 'TAVERN' || activePanel === 'TIMEWARPED' || activePanel === 'BUDDIES';
+  const showFilters = activePanel === 'TAVERN' || activePanel === 'TIMEWARPED' || activePanel === 'BUDDIES' || activePanel === 'TRINKETS';
   const showCardTypeToggle = activePanel === 'TAVERN' || activePanel === 'TIMEWARPED';
+  const showTrinketTierToggle = activePanel === 'TRINKETS';
 
   return (
     <div className="app-shell">
@@ -51,8 +53,9 @@ export function AppShell({ syncStatus }: AppShellProps) {
           <div className="filter-row">
             <PlainGoldenToggle />
             {showCardTypeToggle && <CardTypeToggle />}
+            {showTrinketTierToggle && <TrinketTierToggle />}
             <TribeFilter />
-            <TierFilter tiers={activePanel === 'TIMEWARPED' ? [3, 5] : undefined} />
+            {!showTrinketTierToggle && <TierFilter tiers={activePanel === 'TIMEWARPED' ? [3, 5] : undefined} />}
           </div>
         )}
 
