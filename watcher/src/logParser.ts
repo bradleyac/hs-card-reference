@@ -155,11 +155,10 @@ const combatFreshenedHeroes = new Set<string>();
 
 /**
  * Tracks which opponent heroCardIds have had their snapshot sealed against new
- * entity additions. Sealing happens the first time any minion exits PLAY during
- * combat (i.e. a minion dies), which signals the initial board setup phase is
- * complete. Deathrattle summons always appear in the log after the triggering
- * minion's zone exit, so sealing at that point prevents them from being appended
- * to the opponent's initial board snapshot.
+ * entity additions. Sealing happens when any minion's ATTACKING tag is set to 1
+ * during combat — i.e. the first actual attack. This fires after START_OF_COMBAT
+ * and Rally summons (which should be part of the snapshot) but before any
+ * deathrattle summons (which should not), making it the correct boundary.
  */
 const snapshotSealedHeroes = new Set<string>();
 
@@ -291,10 +290,9 @@ function flushCurrentEntity(): LogEvent[] {
             snap.clear();
             combatFreshenedHeroes.add(heroCardId);
           }
-          // Don't add new entities once the snapshot is sealed. Sealing happens when
-          // any minion exits PLAY during combat (see ZONE handler below), which
-          // guarantees deathrattle summons — logged after the triggering death — are
-          // never appended to the opponent's initial board state.
+          // Don't add new entities once the snapshot is sealed. Sealing happens on
+          // the first ATTACKING=1 tag during combat (first attack), after any
+          // START_OF_COMBAT / Rally summons but before any deathrattle summons.
           if (!snapshotSealedHeroes.has(heroCardId)) {
             snap.set(currentEntityId, { ...entry });
             events.push({
@@ -443,6 +441,14 @@ function processTagChange(entityRef: string, tag: string, value: string): LogEve
     }
   }
 
+  // First attack during combat seals the opponent's snapshot. This fires before
+  // any deathrattle summons and after any START_OF_COMBAT / Rally summons, so it
+  // correctly captures the board as it stands when actual combat begins.
+  if (tag === 'ATTACKING' && value === '1' && inCombat && currentOpponentHeroCardId) {
+    snapshotSealedHeroes.add(currentOpponentHeroCardId);
+    return [];
+  }
+
   // Board entity updates
   if (entityId && boardEntities.has(entityId)) {
     const entry = boardEntities.get(entityId)!;
@@ -476,17 +482,9 @@ function processTagChange(entityRef: string, tag: string, value: string): LogEve
       } else if (prevZone === 'PLAY') {
         boardEntities.delete(entityId);
         const heroCardId = heroCardIdForEntry(entry);
-        if (heroCardId && boardSnapshots.has(heroCardId)) {
-          if (inCombat) {
-            // A minion left the board during combat (died, banished, etc.). Seal the
-            // snapshot so that deathrattle summons — which always appear in the log
-            // after the triggering minion's zone exit — are not appended to the
-            // opponent's initial board state.
-            snapshotSealedHeroes.add(heroCardId);
-          } else {
-            boardSnapshots.get(heroCardId)!.delete(entityId);
-            return [{ type: 'PLAYER_BOARD', heroCardId, minions: snapshotToMinions(boardSnapshots.get(heroCardId)!), turn: currentTurn }];
-          }
+        if (heroCardId && boardSnapshots.has(heroCardId) && !inCombat) {
+          boardSnapshots.get(heroCardId)!.delete(entityId);
+          return [{ type: 'PLAYER_BOARD', heroCardId, minions: snapshotToMinions(boardSnapshots.get(heroCardId)!), turn: currentTurn }];
         }
       }
       return [];
