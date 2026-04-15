@@ -153,6 +153,15 @@ let currentTurn = 0;
  */
 const combatFreshenedHeroes = new Set<string>();
 
+/**
+ * Tracks which opponent heroCardIds have had their snapshot sealed against new
+ * entity additions. Sealing happens when any minion's ATTACKING tag is set to 1
+ * during combat — i.e. the first actual attack. This fires after START_OF_COMBAT
+ * and Rally summons (which should be part of the snapshot) but before any
+ * deathrattle summons (which should not), making it the correct boundary.
+ */
+const snapshotSealedHeroes = new Set<string>();
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function heroCardIdForEntry(entry: BoardEntry): string | null {
@@ -281,13 +290,18 @@ function flushCurrentEntity(): LogEvent[] {
             snap.clear();
             combatFreshenedHeroes.add(heroCardId);
           }
-          snap.set(currentEntityId, { ...entry });
-          events.push({
-            type: 'PLAYER_BOARD',
-            heroCardId,
-            minions: snapshotToMinions(snap),
-            turn: currentTurn,
-          });
+          // Don't add new entities once the snapshot is sealed. Sealing happens on
+          // the first ATTACKING=1 tag during combat (first attack), after any
+          // START_OF_COMBAT / Rally summons but before any deathrattle summons.
+          if (!snapshotSealedHeroes.has(heroCardId)) {
+            snap.set(currentEntityId, { ...entry });
+            events.push({
+              type: 'PLAYER_BOARD',
+              heroCardId,
+              minions: snapshotToMinions(snap),
+              turn: currentTurn,
+            });
+          }
         }
       }
     }
@@ -330,6 +344,7 @@ function resetState(): void {
   copiedFromMap.clear();
   inCombat = false;
   combatFreshenedHeroes.clear();
+  snapshotSealedHeroes.clear();
   currentTurn = 0;
 }
 
@@ -358,6 +373,7 @@ function processTagChange(entityRef: string, tag: string, value: string): LogEve
       if (value !== localPlayerBgSlot) {
         currentOpponentHeroCardId = bgSlotToHeroCardId.get(value) ?? '';
         combatFreshenedHeroes.clear();
+        snapshotSealedHeroes.clear();
       }
     }
     return [];
@@ -415,12 +431,22 @@ function processTagChange(entityRef: string, tag: string, value: string): LogEve
               snap.clear();
               combatFreshenedHeroes.add(heroCardId);
             }
-            snap.set(entityId, { ...entry });
-            return [{ type: 'PLAYER_BOARD', heroCardId, minions: snapshotToMinions(snap), turn: currentTurn }];
+            if (!snapshotSealedHeroes.has(heroCardId)) {
+              snap.set(entityId, { ...entry });
+              return [{ type: 'PLAYER_BOARD', heroCardId, minions: snapshotToMinions(snap), turn: currentTurn }];
+            }
           }
         }
       }
     }
+  }
+
+  // First attack during combat seals the opponent's snapshot. This fires before
+  // any deathrattle summons and after any START_OF_COMBAT / Rally summons, so it
+  // correctly captures the board as it stands when actual combat begins.
+  if (tag === 'ATTACKING' && value === '1' && inCombat && currentOpponentHeroCardId) {
+    snapshotSealedHeroes.add(currentOpponentHeroCardId);
+    return [];
   }
 
   // Board entity updates
