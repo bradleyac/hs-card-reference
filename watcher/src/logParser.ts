@@ -153,6 +153,16 @@ let currentTurn = 0;
  */
 const combatFreshenedHeroes = new Set<string>();
 
+/**
+ * Tracks which opponent heroCardIds have had their snapshot sealed against new
+ * entity additions. Sealing happens the first time any minion exits PLAY during
+ * combat (i.e. a minion dies), which signals the initial board setup phase is
+ * complete. Deathrattle summons always appear in the log after the triggering
+ * minion's zone exit, so sealing at that point prevents them from being appended
+ * to the opponent's initial board snapshot.
+ */
+const snapshotSealedHeroes = new Set<string>();
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function heroCardIdForEntry(entry: BoardEntry): string | null {
@@ -281,13 +291,19 @@ function flushCurrentEntity(): LogEvent[] {
             snap.clear();
             combatFreshenedHeroes.add(heroCardId);
           }
-          snap.set(currentEntityId, { ...entry });
-          events.push({
-            type: 'PLAYER_BOARD',
-            heroCardId,
-            minions: snapshotToMinions(snap),
-            turn: currentTurn,
-          });
+          // Don't add new entities once the snapshot is sealed. Sealing happens when
+          // any minion exits PLAY during combat (see ZONE handler below), which
+          // guarantees deathrattle summons — logged after the triggering death — are
+          // never appended to the opponent's initial board state.
+          if (!snapshotSealedHeroes.has(heroCardId)) {
+            snap.set(currentEntityId, { ...entry });
+            events.push({
+              type: 'PLAYER_BOARD',
+              heroCardId,
+              minions: snapshotToMinions(snap),
+              turn: currentTurn,
+            });
+          }
         }
       }
     }
@@ -330,6 +346,7 @@ function resetState(): void {
   copiedFromMap.clear();
   inCombat = false;
   combatFreshenedHeroes.clear();
+  snapshotSealedHeroes.clear();
   currentTurn = 0;
 }
 
@@ -358,6 +375,7 @@ function processTagChange(entityRef: string, tag: string, value: string): LogEve
       if (value !== localPlayerBgSlot) {
         currentOpponentHeroCardId = bgSlotToHeroCardId.get(value) ?? '';
         combatFreshenedHeroes.clear();
+        snapshotSealedHeroes.clear();
       }
     }
     return [];
@@ -415,8 +433,10 @@ function processTagChange(entityRef: string, tag: string, value: string): LogEve
               snap.clear();
               combatFreshenedHeroes.add(heroCardId);
             }
-            snap.set(entityId, { ...entry });
-            return [{ type: 'PLAYER_BOARD', heroCardId, minions: snapshotToMinions(snap), turn: currentTurn }];
+            if (!snapshotSealedHeroes.has(heroCardId)) {
+              snap.set(entityId, { ...entry });
+              return [{ type: 'PLAYER_BOARD', heroCardId, minions: snapshotToMinions(snap), turn: currentTurn }];
+            }
           }
         }
       }
@@ -456,9 +476,17 @@ function processTagChange(entityRef: string, tag: string, value: string): LogEve
       } else if (prevZone === 'PLAY') {
         boardEntities.delete(entityId);
         const heroCardId = heroCardIdForEntry(entry);
-        if (heroCardId && boardSnapshots.has(heroCardId) && !inCombat) {
-          boardSnapshots.get(heroCardId)!.delete(entityId);
-          return [{ type: 'PLAYER_BOARD', heroCardId, minions: snapshotToMinions(boardSnapshots.get(heroCardId)!), turn: currentTurn }];
+        if (heroCardId && boardSnapshots.has(heroCardId)) {
+          if (inCombat) {
+            // A minion left the board during combat (died, banished, etc.). Seal the
+            // snapshot so that deathrattle summons — which always appear in the log
+            // after the triggering minion's zone exit — are not appended to the
+            // opponent's initial board state.
+            snapshotSealedHeroes.add(heroCardId);
+          } else {
+            boardSnapshots.get(heroCardId)!.delete(entityId);
+            return [{ type: 'PLAYER_BOARD', heroCardId, minions: snapshotToMinions(boardSnapshots.get(heroCardId)!), turn: currentTurn }];
+          }
         }
       }
       return [];
